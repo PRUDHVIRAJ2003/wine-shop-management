@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -13,7 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Calendar, FileDown, Lock, Unlock } from 'lucide-react';
-import { formatCurrency, getTodayDate, getYesterdayDate } from '@/lib/utils';
+import { formatCurrency, getTodayDate } from '@/lib/utils';
 import { generateDailyReportPDF, downloadPDF } from '@/lib/pdf-generator';
 
 export default function AdminEntryPage() {

@@ -1,9 +1,11 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Shop, DailyStockEntry, DailyCashEntry, ApprovalRequest } from '@/types';
+import { User, Shop, ApprovalRequest } from '@/types';
 import AdminSidebar from '@/components/AdminSidebar';
 import DashboardCharts from '@/components/DashboardCharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -11,7 +13,7 @@ import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { TrendingUp, TrendingDown, Package, DollarSign, AlertCircle } from 'lucide-react';
+import { TrendingUp, Package, DollarSign, AlertCircle } from 'lucide-react';
 
 export default function AdminDashboard() {
   const router = useRouter();

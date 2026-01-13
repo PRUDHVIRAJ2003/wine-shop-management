@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -12,7 +14,7 @@ import StockEntryTable from '@/components/StockEntryTable';
 import CashDenomination from '@/components/CashDenomination';
 import ExtraTransactions from '@/components/ExtraTransactions';
 import { Wine, LogOut, Plus, Calendar } from 'lucide-react';
-import { formatCurrency, getTodayDate, getYesterdayDate, formatDateForInput } from '@/lib/utils';
+import { formatCurrency, getTodayDate, getYesterdayDate } from '@/lib/utils';
 
 export default function StaffEntryPage() {
   const router = useRouter();
@@ -28,7 +30,6 @@ export default function StaffEntryPage() {
   
   // Stock data
   const [stockEntries, setStockEntries] = useState<(DailyStockEntry & { product?: Product })[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
   
   // Cash data
   const [cashEntry, setCashEntry] = useState<Partial<DailyCashEntry>>({
@@ -118,8 +119,6 @@ export default function StaffEntryPage() {
       .order('brand_name');
 
     if (productsData) {
-      setProducts(productsData);
-      
       // Get unique sizes
       const sizes = Array.from(new Set(productsData.map(p => p.product_size?.size_ml).filter(Boolean))) as number[];
       setProductSizes(sizes.sort((a, b) => a - b));

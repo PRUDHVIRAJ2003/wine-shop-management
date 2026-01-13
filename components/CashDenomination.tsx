@@ -3,11 +3,6 @@
 import { Input } from './ui/Input';
 import { Label } from './ui/Label';
 
-interface Denomination {
-  value: number;
-  count: number;
-}
-
 interface CashDenominationProps {
   denominations: {
     denom_500: number;
