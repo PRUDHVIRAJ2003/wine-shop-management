@@ -512,7 +512,7 @@ export default function AdminEntryPage() {
         .eq('entry_date', selectedDate)
         .single();
       
-      if (todayCashEntry && todayCashEntry.counter_closing > 0) {
+      if (todayCashEntry && todayCashEntry.counter_closing != null) {
         // Check if tomorrow's cash entry exists
         const { data: existingCashEntry } = await supabase
           .from('daily_cash_entries')
