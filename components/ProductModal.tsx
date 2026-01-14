@@ -42,41 +42,53 @@ export default function ProductModal({ isOpen, onClose, shopId, onProductAdded }
   }, [isOpen]);
 
   const loadProductTypesAndSizes = async () => {
-    // Load product types
-    const { data: typesData } = await supabase
-      .from('product_types')
-      .select('*')
-      .order('name');
-    
-    if (typesData) {
-      setProductTypes(typesData);
-    }
+    try {
+      // Load product types
+      const { data: typesData, error: typesError } = await supabase
+        .from('product_types')
+        .select('*')
+        .order('name');
+      
+      if (typesError) throw typesError;
+      if (typesData) {
+        setProductTypes(typesData);
+      }
 
-    // Load product sizes
-    const { data: sizesData } = await supabase
-      .from('product_sizes')
-      .select('*')
-      .order('size_ml');
-    
-    if (sizesData) {
-      setProductSizes(sizesData);
+      // Load product sizes
+      const { data: sizesData, error: sizesError } = await supabase
+        .from('product_sizes')
+        .select('*')
+        .order('size_ml');
+      
+      if (sizesError) throw sizesError;
+      if (sizesData) {
+        setProductSizes(sizesData);
+      }
+    } catch (error: any) {
+      alert('Error loading product types and sizes: ' + error.message);
     }
   };
 
   const handleAddType = async () => {
     if (!newTypeName.trim()) return;
 
-    const { data, error } = await supabase
-      .from('product_types')
-      .insert({ name: newTypeName.trim() })
-      .select()
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('product_types')
+        .insert({ name: newTypeName.trim() })
+        .select()
+        .single();
 
-    if (!error && data) {
-      setProductTypes([...productTypes, data]);
-      setFormData({ ...formData, type_id: data.id });
-      setNewTypeName('');
-      setShowAddType(false);
+      if (error) throw error;
+
+      if (data) {
+        setProductTypes([...productTypes, data]);
+        setFormData({ ...formData, type_id: data.id });
+        setNewTypeName('');
+        setShowAddType(false);
+      }
+    } catch (error: any) {
+      alert('Error adding product type: ' + error.message);
     }
   };
 
@@ -84,17 +96,23 @@ export default function ProductModal({ isOpen, onClose, shopId, onProductAdded }
     const sizeValue = parseInt(newSizeValue);
     if (!sizeValue || sizeValue <= 0) return;
 
-    const { data, error } = await supabase
-      .from('product_sizes')
-      .insert({ size_ml: sizeValue })
-      .select()
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('product_sizes')
+        .insert({ size_ml: sizeValue })
+        .select()
+        .single();
 
-    if (!error && data) {
-      setProductSizes([...productSizes, data].sort((a, b) => a.size_ml - b.size_ml));
-      setFormData({ ...formData, size_id: data.id });
-      setNewSizeValue('');
-      setShowAddSize(false);
+      if (error) throw error;
+
+      if (data) {
+        setProductSizes([...productSizes, data].sort((a, b) => a.size_ml - b.size_ml));
+        setFormData({ ...formData, size_id: data.id });
+        setNewSizeValue('');
+        setShowAddSize(false);
+      }
+    } catch (error: any) {
+      alert('Error adding product size: ' + error.message);
     }
   };
 
