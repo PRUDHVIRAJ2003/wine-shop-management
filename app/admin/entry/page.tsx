@@ -156,7 +156,14 @@ export default function AdminEntryPage() {
 
     if (shopsData && shopsData.length > 0) {
       setShops(shopsData);
-      setSelectedShop(shopsData[0].id);
+      
+      // Check localStorage for saved shop selection
+      const savedShopId = localStorage.getItem('selectedShopId');
+      if (savedShopId && shopsData.some(s => s.id === savedShopId)) {
+        setSelectedShop(savedShopId);
+      } else {
+        setSelectedShop(shopsData[0].id);
+      }
     }
 
     setLoading(false);
@@ -358,6 +365,11 @@ export default function AdminEntryPage() {
     router.push('/login');
   };
 
+  const handleShopChange = (shopId: string) => {
+    setSelectedShop(shopId);
+    localStorage.setItem('selectedShopId', shopId);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -383,7 +395,7 @@ export default function AdminEntryPage() {
               <div>
                 <Select
                   value={selectedShop}
-                  onChange={(e) => setSelectedShop(e.target.value)}
+                  onChange={(e) => handleShopChange(e.target.value)}
                   className="w-64"
                 >
                   {shops.map((shop) => (

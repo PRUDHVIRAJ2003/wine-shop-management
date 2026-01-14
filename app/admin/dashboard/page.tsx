@@ -45,8 +45,9 @@ export default function AdminDashboard() {
     checkAuth();
   }, []);
 
+  // Auto-reload dashboard when shop or date changes
   useEffect(() => {
-    if (user && selectedShop) {
+    if (user && selectedShop && selectedDate) {
       loadDashboardData();
     }
   }, [user, selectedShop, selectedDate]);
@@ -80,7 +81,14 @@ export default function AdminDashboard() {
 
     if (shopsData && shopsData.length > 0) {
       setShops(shopsData);
-      setSelectedShop(shopsData[0].id);
+      
+      // Check localStorage for saved shop selection
+      const savedShopId = localStorage.getItem('selectedShopId');
+      if (savedShopId && shopsData.some(s => s.id === savedShopId)) {
+        setSelectedShop(savedShopId);
+      } else {
+        setSelectedShop(shopsData[0].id);
+      }
     }
 
     setLoading(false);
@@ -176,11 +184,14 @@ export default function AdminDashboard() {
       dailyTrend: trendData,
     }));
 
-    // Load pending approvals
+    // Load pending approvals with shop and user info
     const { data: approvals } = await supabase
       .from('approval_requests')
-      .select('*')
-      .eq('shop_id', selectedShop)
+      .select(`
+        *,
+        shop:shops(name),
+        user:users(username)
+      `)
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
@@ -192,6 +203,81 @@ export default function AdminDashboard() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     router.push('/login');
+  };
+
+  const handleShopChange = (shopId: string) => {
+    setSelectedShop(shopId);
+    localStorage.setItem('selectedShopId', shopId);
+  };
+
+  const handleApproveRequest = async (requestId: string, shopId: string, entryDate: string, requestType: string) => {
+    try {
+      // Update approval request status
+      const { error: approvalError } = await supabase
+        .from('approval_requests')
+        .update({ 
+          status: 'approved',
+          resolved_at: new Date().toISOString()
+        })
+        .eq('id', requestId);
+
+      if (approvalError) throw approvalError;
+
+      // If it's a lock request, set is_approved = true on daily_cash_entries
+      if (requestType === 'lock') {
+        const { error: cashError } = await supabase
+          .from('daily_cash_entries')
+          .update({ 
+            is_approved: true,
+            approved_at: new Date().toISOString()
+          })
+          .eq('shop_id', shopId)
+          .eq('entry_date', entryDate);
+
+        if (cashError) throw cashError;
+      }
+
+      // If it's an unlock request, set is_locked = false
+      if (requestType === 'unlock') {
+        const { error: unlockError } = await supabase
+          .from('daily_cash_entries')
+          .update({ 
+            is_locked: false,
+            is_approved: false,
+            unlock_requested: false
+          })
+          .eq('shop_id', shopId)
+          .eq('entry_date', entryDate);
+
+        if (unlockError) throw unlockError;
+      }
+
+      alert('✅ Request approved successfully!');
+      loadDashboardData(); // Refresh the list
+
+    } catch (error: any) {
+      alert('❌ Error approving request: ' + error.message);
+    }
+  };
+
+  const handleRejectRequest = async (requestId: string) => {
+    try {
+      const { error } = await supabase
+        .from('approval_requests')
+        .update({ 
+          status: 'rejected',
+          resolved_at: new Date().toISOString()
+        })
+        .eq('id', requestId);
+
+      if (error) throw error;
+
+      alert('✅ Request rejected!');
+      loadDashboardData(); // Refresh the list
+
+    } catch (error: any) {
+      alert('❌ Error rejecting request: ' + error.message);
+    }
   };
 
   if (loading) {
@@ -223,7 +309,7 @@ export default function AdminDashboard() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Shop</label>
                 <Select
                   value={selectedShop}
-                  onChange={(e) => setSelectedShop(e.target.value)}
+                  onChange={(e) => handleShopChange(e.target.value)}
                   className="w-64"
                 >
                   {shops.map((shop) => (
@@ -316,17 +402,33 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {pendingApprovals.map((approval) => (
+                {pendingApprovals.map((approval: any) => (
                   <div key={approval.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
                     <div>
                       <p className="font-medium">
                         {approval.request_type === 'lock' ? 'Lock Request' : 'Unlock Request'}
+                        {approval.shop?.name && ` - ${approval.shop.name}`}
                       </p>
                       <p className="text-sm text-gray-600">Date: {formatDate(approval.entry_date)}</p>
+                      {approval.user?.username && (
+                        <p className="text-sm text-gray-600">Requested by: {approval.user.username}</p>
+                      )}
                     </div>
                     <div className="flex space-x-2">
-                      <Button size="sm" variant="secondary">Approve</Button>
-                      <Button size="sm" variant="destructive">Reject</Button>
+                      <Button 
+                        size="sm" 
+                        variant="secondary"
+                        onClick={() => handleApproveRequest(approval.id, approval.shop_id, approval.entry_date, approval.request_type)}
+                      >
+                        Approve
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="destructive"
+                        onClick={() => handleRejectRequest(approval.id)}
+                      >
+                        Reject
+                      </Button>
                     </div>
                   </div>
                 ))}
