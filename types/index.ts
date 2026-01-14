@@ -115,3 +115,20 @@ export interface PDFArchive {
   month_year: string;
   created_at: string;
 }
+
+export interface CreditEntry {
+  id?: string;
+  shop_id?: string;
+  entry_date?: string;
+  person_name: string;
+  amount: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Debtor {
+  id: string;
+  shop_id: string;
+  person_name: string;
+  created_at: string;
+}

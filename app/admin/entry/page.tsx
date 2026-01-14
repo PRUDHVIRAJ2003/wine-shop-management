@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Shop, DailyStockEntry, DailyCashEntry, Product, ExtraTransaction } from '@/types';
+import { User, Shop, DailyStockEntry, DailyCashEntry, Product, ExtraTransaction, CreditEntry } from '@/types';
 import AdminSidebar from '@/components/AdminSidebar';
 import StockEntryTable from '@/components/StockEntryTable';
 import CashDenomination from '@/components/CashDenomination';
@@ -61,6 +61,10 @@ export default function AdminEntryPage() {
   
   const [extraTransactions, setExtraTransactions] = useState<Omit<ExtraTransaction, 'id' | 'cash_entry_id' | 'created_at'>[]>([]);
 
+  // Credit entries state
+  const [creditEntries, setCreditEntries] = useState<CreditEntry[]>([]);
+  const [previousDebtors, setPreviousDebtors] = useState<string[]>([]);
+
   // Computed values using useMemo for reactivity
   const totalExtraIncome = useMemo(() => {
     return extraTransactions
@@ -73,6 +77,10 @@ export default function AdminEntryPage() {
       .filter(t => t.transaction_type === 'expense')
       .reduce((sum, t) => sum + (t.amount || 0), 0);
   }, [extraTransactions]);
+
+  const totalCredit = useMemo(() => {
+    return creditEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+  }, [creditEntries]);
 
   const totalCash = useMemo(() => {
     return (
@@ -97,10 +105,6 @@ export default function AdminEntryPage() {
     return stockEntries.reduce((sum, e) => sum + (e.sale_value || 0), 0);
   }, [stockEntries]);
 
-  const cashShortage = useMemo(() => {
-    return totalSaleValue - totalCash;
-  }, [totalSaleValue, totalCash]);
-
   const totalBottlesSold = useMemo(() => {
     return stockEntries.reduce((sum, e) => sum + (e.sold_qty || 0), 0);
   }, [stockEntries]);
@@ -108,6 +112,10 @@ export default function AdminEntryPage() {
   const counterClosing = useMemo(() => {
     return totalCash + totalUpiBank + totalExtraIncome - totalExpenses;
   }, [totalCash, totalUpiBank, totalExtraIncome, totalExpenses]);
+
+  const cashShortage = useMemo(() => {
+    return counterClosing - totalCredit;
+  }, [counterClosing, totalCredit]);
 
   // Update cashEntry when computed values change
   useEffect(() => {
@@ -129,6 +137,7 @@ export default function AdminEntryPage() {
   useEffect(() => {
     if (user && selectedShop) {
       initializeData();
+      loadPreviousDebtors();
     }
   }, [user, selectedShop, selectedDate]);
 
@@ -140,6 +149,40 @@ export default function AdminEntryPage() {
     
     // Then load today's data
     await loadData();
+    
+    // Load credit entries
+    await loadCreditEntries();
+  };
+
+  const loadPreviousDebtors = async () => {
+    if (!selectedShop) return;
+    
+    const { data, error } = await supabase
+      .from('debtors')
+      .select('person_name')
+      .eq('shop_id', selectedShop)
+      .order('person_name');
+    
+    if (data) {
+      setPreviousDebtors(data.map(d => d.person_name));
+    }
+  };
+
+  const loadCreditEntries = async () => {
+    if (!selectedShop) return;
+    
+    const { data, error } = await supabase
+      .from('daily_credit_entries')
+      .select('*')
+      .eq('shop_id', selectedShop)
+      .eq('entry_date', selectedDate)
+      .order('created_at');
+    
+    if (data) {
+      setCreditEntries(data);
+    } else if (!error) {
+      setCreditEntries([]);
+    }
   };
 
   const carryForwardFromPreviousDay = async (shopId: string, selectedDate: string) => {
@@ -379,6 +422,97 @@ export default function AdminEntryPage() {
     }));
   };
 
+  const handleAddCreditEntry = () => {
+    setCreditEntries([
+      ...creditEntries,
+      { person_name: '', amount: 0 }
+    ]);
+  };
+
+  const handleCreditEntryChange = (index: number, field: string, value: any) => {
+    const updated = [...creditEntries];
+    updated[index] = {
+      ...updated[index],
+      [field]: field === 'amount' ? (parseFloat(value) || 0) : value
+    };
+    setCreditEntries(updated);
+  };
+
+  const handleDeleteCreditEntry = async (index: number) => {
+    const entry = creditEntries[index];
+    
+    if (entry.id) {
+      // Delete from database
+      const { error } = await supabase
+        .from('daily_credit_entries')
+        .delete()
+        .eq('id', entry.id);
+      
+      if (error) {
+        alert('❌ Error deleting credit entry: ' + error.message);
+        return;
+      }
+    }
+    
+    // Remove from state
+    const updated = creditEntries.filter((_, i) => i !== index);
+    setCreditEntries(updated);
+  };
+
+  const saveCreditEntries = async () => {
+    if (!selectedShop) return;
+    
+    try {
+      for (const entry of creditEntries) {
+        if (entry.person_name && entry.amount > 0) {
+          if (entry.id) {
+            // Update existing
+            const { error } = await supabase
+              .from('daily_credit_entries')
+              .update({
+                person_name: entry.person_name,
+                amount: entry.amount,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', entry.id);
+            
+            if (error) throw error;
+          } else {
+            // Insert new
+            const { error } = await supabase
+              .from('daily_credit_entries')
+              .insert({
+                shop_id: selectedShop,
+                entry_date: selectedDate,
+                person_name: entry.person_name,
+                amount: entry.amount
+              });
+            
+            if (error) throw error;
+          }
+          
+          // Add to debtors table for auto-suggest (upsert)
+          const { error: debtorError } = await supabase
+            .from('debtors')
+            .upsert({
+              shop_id: selectedShop,
+              person_name: entry.person_name
+            }, {
+              onConflict: 'shop_id,person_name'
+            });
+          
+          if (debtorError) throw debtorError;
+        }
+      }
+      
+      // Reload previous debtors to update the list
+      await loadPreviousDebtors();
+    } catch (error: any) {
+      console.error('Error saving credit entries:', error);
+      throw error;
+    }
+  };
+
   const saveCashEntry = async () => {
     if (!cashEntry.id) return;
 
@@ -419,6 +553,9 @@ export default function AdminEntryPage() {
             }))
           );
       }
+
+      // Save credit entries
+      await saveCreditEntries();
 
       alert('✅ Changes saved successfully!');
     } catch (error: any) {
@@ -903,6 +1040,92 @@ export default function AdminEntryPage() {
           />
         </div>
 
+        {/* Credit Sales / Debtors Section */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-[#722F37]">
+              💳 Credit Sales / Debtors
+            </h3>
+            <Button
+              onClick={handleAddCreditEntry}
+              variant="secondary"
+              size="sm"
+            >
+              + Add
+            </Button>
+          </div>
+          
+          <p className="text-sm text-gray-500 mb-4">
+            Bottles taken without immediate payment (credit/lending)
+          </p>
+          
+          {creditEntries.length === 0 ? (
+            <p className="text-gray-400 text-center py-4">No credit sales added</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-[#722F37] text-white">
+                  <tr>
+                    <th className="px-4 py-2 text-left w-16">S.No</th>
+                    <th className="px-4 py-2 text-left">Person Name</th>
+                    <th className="px-4 py-2 text-right">Amount (₹)</th>
+                    <th className="px-4 py-2 text-center w-20">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {creditEntries.map((entry, index) => (
+                    <tr key={index} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-2">{index + 1}</td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="text"
+                          list={`debtor-list-${index}`}
+                          value={entry.person_name}
+                          onChange={(e) => handleCreditEntryChange(index, 'person_name', e.target.value)}
+                          placeholder="Enter person name"
+                          className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#722F37]"
+                        />
+                        <datalist id={`debtor-list-${index}`}>
+                          {previousDebtors.map((name, i) => (
+                            <option key={i} value={name} />
+                          ))}
+                        </datalist>
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="number"
+                          value={entry.amount || ''}
+                          onChange={(e) => handleCreditEntryChange(index, 'amount', e.target.value)}
+                          placeholder="0"
+                          className="w-full border border-gray-300 rounded px-3 py-2 text-right focus:outline-none focus:ring-2 focus:ring-[#722F37]"
+                          step="0.01"
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        <button
+                          onClick={() => handleDeleteCreditEntry(index)}
+                          className="text-red-500 hover:text-red-700"
+                          title="Delete"
+                        >
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {/* Total Row */}
+                  <tr className="bg-yellow-100 font-bold">
+                    <td className="px-4 py-3" colSpan={2}>TOTAL CREDIT:</td>
+                    <td className="px-4 py-3 text-right text-[#722F37]">
+                      {formatCurrency(totalCredit)}
+                    </td>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
@@ -913,6 +1136,9 @@ export default function AdminEntryPage() {
               <div className="text-3xl font-bold text-red-600">
                 {formatCurrency(cashShortage)}
               </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Counter Closing ({formatCurrency(counterClosing)}) - Credit Sales ({formatCurrency(totalCredit)})
+              </p>
             </CardContent>
           </Card>
 
