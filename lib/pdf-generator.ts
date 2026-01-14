@@ -73,7 +73,7 @@ export function generateDailyReportPDF(data: PDFData): jsPDF {
   // Stock table
   autoTable(doc, {
     startY: yPos,
-    head: [['S.No', 'Brand Name', 'Type', 'Size', 'MRP', 'Open', 'Purch', 'Trans', 'Close', 'Sold', 'Sale Val', 'Stock Val']],
+    head: [['S.No', 'Brand Name', 'Type', 'Size', 'MRP', 'Open', 'Purch', 'Trans', 'Close', 'Sold', 'Sale Val', 'Closing Value']],
     body: data.stockEntries.map((entry, index) => [
       (index + 1).toString(),
       cleanText(entry.product?.brand_name || 'N/A'),
