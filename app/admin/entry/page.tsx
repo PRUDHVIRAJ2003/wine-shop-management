@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { User, Shop, DailyStockEntry, DailyCashEntry, Product, ExtraTransaction } from '@/types';
@@ -55,6 +55,67 @@ export default function AdminEntryPage() {
   });
   
   const [extraTransactions, setExtraTransactions] = useState<Omit<ExtraTransaction, 'id' | 'cash_entry_id' | 'created_at'>[]>([]);
+
+  // Computed values using useMemo for reactivity
+  const totalExtraIncome = useMemo(() => {
+    return extraTransactions
+      .filter(t => t.transaction_type === 'income')
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+  }, [extraTransactions]);
+
+  const totalExpenses = useMemo(() => {
+    return extraTransactions
+      .filter(t => t.transaction_type === 'expense')
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+  }, [extraTransactions]);
+
+  const totalCash = useMemo(() => {
+    return (
+      (cashEntry.denom_500 || 0) * 500 +
+      (cashEntry.denom_200 || 0) * 200 +
+      (cashEntry.denom_100 || 0) * 100 +
+      (cashEntry.denom_50 || 0) * 50 +
+      (cashEntry.denom_20 || 0) * 20 +
+      (cashEntry.denom_10 || 0) * 10 +
+      (cashEntry.denom_5 || 0) * 5 +
+      (cashEntry.denom_2 || 0) * 2 +
+      (cashEntry.denom_1 || 0) * 1
+    );
+  }, [cashEntry.denom_500, cashEntry.denom_200, cashEntry.denom_100, cashEntry.denom_50, 
+      cashEntry.denom_20, cashEntry.denom_10, cashEntry.denom_5, cashEntry.denom_2, cashEntry.denom_1]);
+
+  const totalUpiBank = useMemo(() => {
+    return (cashEntry.google_pay || 0) + (cashEntry.phonepe_paytm || 0) + (cashEntry.bank_transfer || 0);
+  }, [cashEntry.google_pay, cashEntry.phonepe_paytm, cashEntry.bank_transfer]);
+
+  const totalSaleValue = useMemo(() => {
+    return stockEntries.reduce((sum, e) => sum + (e.sale_value || 0), 0);
+  }, [stockEntries]);
+
+  const cashShortage = useMemo(() => {
+    return totalSaleValue - totalCash;
+  }, [totalSaleValue, totalCash]);
+
+  const totalBottlesSold = useMemo(() => {
+    return stockEntries.reduce((sum, e) => sum + (e.sold_qty || 0), 0);
+  }, [stockEntries]);
+
+  const counterClosing = useMemo(() => {
+    return totalCash + totalUpiBank + totalExtraIncome - totalExpenses;
+  }, [totalCash, totalUpiBank, totalExtraIncome, totalExpenses]);
+
+  // Update cashEntry when computed values change
+  useEffect(() => {
+    setCashEntry(prev => ({
+      ...prev,
+      total_cash: totalCash,
+      total_upi_bank: totalUpiBank,
+      total_sale_value: totalSaleValue,
+      cash_shortage: cashShortage,
+      total_bottles_sold: totalBottlesSold,
+      counter_closing: counterClosing,
+    }));
+  }, [totalCash, totalUpiBank, totalSaleValue, cashShortage, totalBottlesSold, counterClosing]);
 
   useEffect(() => {
     checkAuth();
@@ -164,115 +225,105 @@ export default function AdminEntryPage() {
     updates.sale_value = sale_value;
     updates.closing_stock_value = closing_stock_value;
 
-    await supabase
-      .from('daily_stock_entries')
-      .update(updates)
-      .eq('id', id);
-
+    // Update local state only - don't auto-save to database
     setStockEntries(prev => prev.map(e => 
       e.id === id ? { ...e, ...updates } : e
     ));
   };
 
   const updateCashDenomination = (field: string, value: number) => {
-    setCashEntry(prev => {
-      const updated = { ...prev, [field]: value };
-      
-      const total_cash = 
-        (updated.denom_500 || 0) * 500 +
-        (updated.denom_200 || 0) * 200 +
-        (updated.denom_100 || 0) * 100 +
-        (updated.denom_50 || 0) * 50 +
-        (updated.denom_20 || 0) * 20 +
-        (updated.denom_10 || 0) * 10 +
-        (updated.denom_5 || 0) * 5 +
-        (updated.denom_2 || 0) * 2 +
-        (updated.denom_1 || 0) * 1;
-
-      updated.total_cash = total_cash;
-      
-      const total_sale_value = stockEntries.reduce((sum, e) => sum + e.sale_value, 0);
-      const cash_shortage = total_sale_value - total_cash;
-      const total_upi_bank = (updated.google_pay || 0) + (updated.phonepe_paytm || 0) + (updated.bank_transfer || 0);
-      
-      const extraIncome = extraTransactions
-        .filter(t => t.transaction_type === 'income')
-        .reduce((sum, t) => sum + t.amount, 0);
-      
-      const extraExpense = extraTransactions
-        .filter(t => t.transaction_type === 'expense')
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      const counter_closing = total_cash + total_upi_bank + extraIncome - extraExpense;
-
-      updated.total_sale_value = total_sale_value;
-      updated.cash_shortage = cash_shortage;
-      updated.total_upi_bank = total_upi_bank;
-      updated.counter_closing = counter_closing;
-      updated.total_bottles_sold = stockEntries.reduce((sum, e) => sum + e.sold_qty, 0);
-
-      return updated;
-    });
+    setCashEntry(prev => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
   const saveCashEntry = async () => {
     if (!cashEntry.id) return;
 
-    await supabase
-      .from('daily_cash_entries')
-      .update(cashEntry)
-      .eq('id', cashEntry.id);
+    try {
+      // Save all stock entries
+      for (const entry of stockEntries) {
+        await supabase
+          .from('daily_stock_entries')
+          .update({
+            opening_stock: entry.opening_stock,
+            purchases: entry.purchases,
+            transfer: entry.transfer,
+            closing_stock: entry.closing_stock,
+            sold_qty: entry.sold_qty,
+            sale_value: entry.sale_value,
+            closing_stock_value: entry.closing_stock_value,
+          })
+          .eq('id', entry.id);
+      }
 
-    if (extraTransactions.length > 0) {
       await supabase
-        .from('extra_transactions')
-        .delete()
-        .eq('cash_entry_id', cashEntry.id);
+        .from('daily_cash_entries')
+        .update(cashEntry)
+        .eq('id', cashEntry.id);
 
-      await supabase
-        .from('extra_transactions')
-        .insert(
-          extraTransactions.map(t => ({
-            ...t,
-            cash_entry_id: cashEntry.id,
-          }))
-        );
+      if (extraTransactions.length > 0) {
+        await supabase
+          .from('extra_transactions')
+          .delete()
+          .eq('cash_entry_id', cashEntry.id);
+
+        await supabase
+          .from('extra_transactions')
+          .insert(
+            extraTransactions.map(t => ({
+              ...t,
+              cash_entry_id: cashEntry.id,
+            }))
+          );
+      }
+
+      alert('✅ Changes saved successfully!');
+    } catch (error: any) {
+      alert('❌ Error saving changes: ' + error.message);
     }
-
-    alert('Changes saved successfully!');
   };
 
   const handleApproveAndLock = async () => {
     if (!cashEntry.id) return;
 
-    await supabase
-      .from('daily_cash_entries')
-      .update({
-        is_locked: true,
-        is_approved: true,
-        approved_at: new Date().toISOString(),
-      })
-      .eq('id', cashEntry.id);
+    try {
+      await supabase
+        .from('daily_cash_entries')
+        .update({
+          is_locked: true,
+          is_approved: true,
+          approved_at: new Date().toISOString(),
+        })
+        .eq('id', cashEntry.id);
 
-    loadData();
-    alert('Entry approved and locked!');
+      loadData();
+      alert('✅ Entry approved and locked successfully!');
+    } catch (error: any) {
+      alert('❌ Error: ' + error.message);
+    }
   };
 
   const handleUnlock = async () => {
     if (!cashEntry.id) return;
 
-    await supabase
-      .from('daily_cash_entries')
-      .update({
-        is_locked: false,
-        is_approved: false,
-        unlock_requested: false,
-        approved_at: null,
-      })
-      .eq('id', cashEntry.id);
+    try {
+      await supabase
+        .from('daily_cash_entries')
+        .update({
+          is_locked: false,
+          is_approved: false,
+          unlock_requested: false,
+          approved_at: null,
+        })
+        .eq('id', cashEntry.id);
 
-    loadData();
-    alert('Entry unlocked!');
+      loadData();
+      alert('✅ Entry unlocked successfully!');
+    } catch (error: any) {
+      alert('❌ Error: ' + error.message);
+    }
   };
 
   const handleGeneratePDF = () => {
@@ -383,7 +434,7 @@ export default function AdminEntryPage() {
               <div>
                 <label className="text-sm font-medium text-gray-700">Today Total Sale Value</label>
                 <div className="mt-1 text-2xl font-bold text-green-600">
-                  {formatCurrency(stockEntries.reduce((sum, e) => sum + e.sale_value, 0))}
+                  {formatCurrency(totalSaleValue)}
                 </div>
               </div>
             </CardContent>
@@ -467,7 +518,7 @@ export default function AdminEntryPage() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-red-600">
-                {formatCurrency(cashEntry.cash_shortage || 0)}
+                {formatCurrency(cashShortage)}
               </div>
             </CardContent>
           </Card>
@@ -478,7 +529,7 @@ export default function AdminEntryPage() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-blue-600">
-                {stockEntries.reduce((sum, e) => sum + e.sold_qty, 0)}
+                {totalBottlesSold}
               </div>
             </CardContent>
           </Card>
@@ -489,7 +540,7 @@ export default function AdminEntryPage() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-green-600">
-                {formatCurrency(cashEntry.counter_closing || 0)}
+                {formatCurrency(counterClosing)}
               </div>
             </CardContent>
           </Card>
