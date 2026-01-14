@@ -13,9 +13,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import StockEntryTable from '@/components/StockEntryTable';
 import CashDenomination from '@/components/CashDenomination';
 import ExtraTransactions from '@/components/ExtraTransactions';
-import { Wine, LogOut, Plus, Calendar } from 'lucide-react';
+import { Wine, LogOut, Plus, Calendar, FileDown } from 'lucide-react';
 import { formatCurrency, getTodayDate, getYesterdayDate } from '@/lib/utils';
 import ProductModal from '@/components/ProductModal';
+import { generateDailyReportPDF, downloadPDF } from '@/lib/pdf-generator';
 
 export default function StaffEntryPage() {
   const router = useRouter();
@@ -481,6 +482,32 @@ export default function StaffEntryPage() {
     }
   };
 
+  const handleGeneratePDF = () => {
+    try {
+      if (!shop || !cashEntry.id) {
+        alert('No data available to generate PDF');
+        return;
+      }
+      
+      const pdfData = {
+        shopName: shop.name,
+        entryDate: selectedDate,
+        stockEntries: stockEntries,
+        cashEntry: cashEntry as DailyCashEntry,
+        extraTransactions: extraTransactions as ExtraTransaction[]
+      };
+      
+      const doc = generateDailyReportPDF(pdfData);
+      const fileName = `${selectedDate}-${shop.name.replace(/\s+/g, '-')}.pdf`;
+      downloadPDF(doc, fileName);
+      
+      alert('✅ PDF generated successfully!');
+    } catch (error: any) {
+      console.error('Error generating PDF:', error);
+      alert('❌ Error generating PDF: ' + error.message);
+    }
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     router.push('/login');
@@ -718,6 +745,10 @@ export default function StaffEntryPage() {
 
         {/* Action Buttons */}
         <div className="flex justify-end space-x-4">
+          <Button variant="outline" onClick={handleGeneratePDF} size="lg">
+            <FileDown size={20} className="mr-2" />
+            Generate PDF Report
+          </Button>
           <Button onClick={saveAllData} size="lg" disabled={cashEntry.is_locked || loading}>
             Save Changes
           </Button>
