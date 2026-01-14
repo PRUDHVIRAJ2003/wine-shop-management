@@ -641,7 +641,8 @@ export default function StaffEntryPage() {
                 <label className="text-sm font-medium text-gray-700">Google Pay</label>
                 <Input
                   type="number"
-                  value={cashEntry.google_pay || 0}
+                  value={cashEntry.google_pay === 0 ? '' : cashEntry.google_pay}
+                  placeholder="0"
                   onChange={(e) => updateCashDenomination('google_pay', parseFloat(e.target.value) || 0)}
                   disabled={cashEntry.is_locked}
                   step="0.01"
@@ -651,7 +652,8 @@ export default function StaffEntryPage() {
                 <label className="text-sm font-medium text-gray-700">PhonePe/Paytm</label>
                 <Input
                   type="number"
-                  value={cashEntry.phonepe_paytm || 0}
+                  value={cashEntry.phonepe_paytm === 0 ? '' : cashEntry.phonepe_paytm}
+                  placeholder="0"
                   onChange={(e) => updateCashDenomination('phonepe_paytm', parseFloat(e.target.value) || 0)}
                   disabled={cashEntry.is_locked}
                   step="0.01"
@@ -661,7 +663,8 @@ export default function StaffEntryPage() {
                 <label className="text-sm font-medium text-gray-700">Bank Transfer</label>
                 <Input
                   type="number"
-                  value={cashEntry.bank_transfer || 0}
+                  value={cashEntry.bank_transfer === 0 ? '' : cashEntry.bank_transfer}
+                  placeholder="0"
                   onChange={(e) => updateCashDenomination('bank_transfer', parseFloat(e.target.value) || 0)}
                   disabled={cashEntry.is_locked}
                   step="0.01"

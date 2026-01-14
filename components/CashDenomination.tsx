@@ -44,7 +44,8 @@ export default function CashDenomination({ denominations, onUpdate, isLocked }: 
             <span className="text-gray-500">×</span>
             <Input
               type="number"
-              value={denominations[denom.field]}
+              value={denominations[denom.field] === 0 ? '' : denominations[denom.field]}
+              placeholder="0"
               onChange={(e) => onUpdate(denom.field, parseInt(e.target.value) || 0)}
               disabled={isLocked}
               className="w-24 h-9"
