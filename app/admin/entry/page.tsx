@@ -128,9 +128,138 @@ export default function AdminEntryPage() {
 
   useEffect(() => {
     if (user && selectedShop) {
-      loadData();
+      initializeData();
     }
   }, [user, selectedShop, selectedDate]);
+
+  const initializeData = async () => {
+    if (!selectedShop) return;
+    
+    // First, carry forward from previous day if needed
+    await carryForwardFromPreviousDay(selectedShop, selectedDate);
+    
+    // Then load today's data
+    await loadData();
+  };
+
+  const carryForwardFromPreviousDay = async (shopId: string, selectedDate: string) => {
+    try {
+      // Calculate previous day's date
+      const currentDate = new Date(selectedDate);
+      const previousDate = new Date(currentDate);
+      previousDate.setDate(previousDate.getDate() - 1);
+      const previousDateStr = previousDate.toISOString().split('T')[0];
+      
+      console.log(`[Carry Forward] Checking carry-forward from ${previousDateStr} to ${selectedDate}`);
+      
+      // ============================================
+      // STEP 1: Check if today's stock entries exist
+      // ============================================
+      const { data: existingStockEntries, error: stockCheckError } = await supabase
+        .from('daily_stock_entries')
+        .select('id, product_id, opening_stock')
+        .eq('shop_id', shopId)
+        .eq('entry_date', selectedDate);
+      
+      if (stockCheckError) {
+        console.error('[Carry Forward] Error checking existing entries:', stockCheckError);
+        return false;
+      }
+      
+      // Check if entries exist AND have opening stock > 0 (already carried forward)
+      const hasCarriedForward = existingStockEntries && 
+        existingStockEntries.some(entry => entry.opening_stock > 0);
+      
+      if (hasCarriedForward) {
+        console.log('[Carry Forward] Stock already carried forward for this date');
+        return false;
+      }
+      
+      // ============================================
+      // STEP 2: Fetch previous day's stock entries
+      // ============================================
+      const { data: previousStockEntries, error: prevStockError } = await supabase
+        .from('daily_stock_entries')
+        .select('product_id, closing_stock')
+        .eq('shop_id', shopId)
+        .eq('entry_date', previousDateStr);
+      
+      if (prevStockError) {
+        console.error('[Carry Forward] Error fetching previous stock:', prevStockError);
+        return false;
+      }
+      
+      if (previousStockEntries && previousStockEntries.length > 0) {
+        console.log(`[Carry Forward] Found ${previousStockEntries.length} entries from previous day`);
+        
+        // Update today's entries with carried forward opening stock
+        for (const prevEntry of previousStockEntries) {
+          // Check if entry exists for this product today
+          const existingEntry = existingStockEntries?.find(
+            e => e.product_id === prevEntry.product_id
+          );
+          
+          if (existingEntry && existingEntry.opening_stock === 0) {
+            // Update existing entry with opening stock
+            await supabase
+              .from('daily_stock_entries')
+              .update({ 
+                opening_stock: prevEntry.closing_stock,
+                closing_stock: prevEntry.closing_stock // Initialize closing stock same as opening
+              })
+              .eq('id', existingEntry.id);
+          }
+        }
+        console.log('[Carry Forward] Stock entries carried forward successfully!');
+      } else {
+        console.log('[Carry Forward] No previous day stock entries found');
+      }
+      
+      // ============================================
+      // STEP 3: Fetch previous day's cash entry for Counter Closing
+      // ============================================
+      const { data: previousCashEntry, error: prevCashError } = await supabase
+        .from('daily_cash_entries')
+        .select('counter_closing')
+        .eq('shop_id', shopId)
+        .eq('entry_date', previousDateStr)
+        .single();
+      
+      if (prevCashError && prevCashError.code !== 'PGRST116') {
+        console.error('[Carry Forward] Error fetching previous cash entry:', prevCashError);
+      }
+      
+      if (previousCashEntry && previousCashEntry.counter_closing > 0) {
+        console.log(`[Carry Forward] Previous counter closing: ₹${previousCashEntry.counter_closing}`);
+        
+        // Check if today's cash entry exists
+        const { data: existingCashEntry } = await supabase
+          .from('daily_cash_entries')
+          .select('id, counter_opening')
+          .eq('shop_id', shopId)
+          .eq('entry_date', selectedDate)
+          .single();
+        
+        if (existingCashEntry && existingCashEntry.counter_opening === 0) {
+          // Update counter opening if it's 0
+          await supabase
+            .from('daily_cash_entries')
+            .update({ 
+              counter_opening: previousCashEntry.counter_closing 
+            })
+            .eq('id', existingCashEntry.id);
+          console.log('[Carry Forward] Counter opening updated!');
+        }
+      } else {
+        console.log('[Carry Forward] No previous day cash entry found or counter closing is 0');
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('[Carry Forward] Error in carry forward:', error);
+      return false;
+    }
+  };
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -448,6 +577,24 @@ export default function AdminEntryPage() {
                   max={getTodayDate()}
                 />
               </div>
+
+              <Button 
+                variant="secondary" 
+                onClick={async () => {
+                  if (selectedShop && selectedDate) {
+                    const success = await carryForwardFromPreviousDay(selectedShop, selectedDate);
+                    if (success) {
+                      alert('✅ Stock and Counter Opening carried forward from previous day!');
+                      await loadData();
+                    } else {
+                      alert('ℹ️ No previous day data found or already carried forward.');
+                    }
+                  }
+                }}
+                className="whitespace-nowrap"
+              >
+                🔄 Carry Forward
+              </Button>
             </div>
           </div>
         </div>
