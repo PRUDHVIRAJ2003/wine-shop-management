@@ -97,7 +97,12 @@ export default function ProductManagementPage() {
 
     if (shopsData) {
       setShops(shopsData);
-      if (shopsData.length > 0 && !shopFilter) {
+      
+      // Check localStorage for saved shop selection
+      const savedShopId = localStorage.getItem('selectedShopId');
+      if (savedShopId && shopsData.some(s => s.id === savedShopId)) {
+        setShopFilter(savedShopId);
+      } else if (shopsData.length > 0 && !shopFilter) {
         setShopFilter(shopsData[0].id);
       }
     }
@@ -196,6 +201,13 @@ export default function ProductManagementPage() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     router.push('/login');
+  };
+
+  const handleShopFilterChange = (shopId: string) => {
+    setShopFilter(shopId);
+    if (shopId) {
+      localStorage.setItem('selectedShopId', shopId);
+    }
   };
 
   const filteredProducts = products.filter(
@@ -393,7 +405,7 @@ export default function ProductManagementPage() {
               <Filter size={20} className="text-gray-500" />
               <div>
                 <Label>Shop</Label>
-                <Select value={shopFilter} onChange={(e) => setShopFilter(e.target.value)}>
+                <Select value={shopFilter} onChange={(e) => handleShopFilterChange(e.target.value)}>
                   <option value="">All Shops</option>
                   {shops.map((shop) => (
                     <option key={shop.id} value={shop.id}>
