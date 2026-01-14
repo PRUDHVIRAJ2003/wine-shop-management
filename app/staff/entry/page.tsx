@@ -15,6 +15,7 @@ import CashDenomination from '@/components/CashDenomination';
 import ExtraTransactions from '@/components/ExtraTransactions';
 import { Wine, LogOut, Plus, Calendar } from 'lucide-react';
 import { formatCurrency, getTodayDate, getYesterdayDate } from '@/lib/utils';
+import ProductModal from '@/components/ProductModal';
 
 export default function StaffEntryPage() {
   const router = useRouter();
@@ -27,6 +28,7 @@ export default function StaffEntryPage() {
   const [brandFilter, setBrandFilter] = useState('');
   const [sizeFilter, setSizeFilter] = useState('');
   const [productSizes, setProductSizes] = useState<number[]>([]);
+  const [showProductModal, setShowProductModal] = useState(false);
   
   // Stock data
   const [stockEntries, setStockEntries] = useState<(DailyStockEntry & { product?: Product })[]>([]);
@@ -421,7 +423,7 @@ export default function StaffEntryPage() {
               ))}
             </Select>
 
-            <Button variant="secondary">
+            <Button variant="secondary" onClick={() => setShowProductModal(true)}>
               <Plus size={20} className="mr-2" />
               Add/Alter Products
             </Button>
@@ -431,6 +433,16 @@ export default function StaffEntryPage() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8 space-y-6">
+        {/* Product Modal */}
+        {user?.shop_id && (
+          <ProductModal
+            isOpen={showProductModal}
+            onClose={() => setShowProductModal(false)}
+            shopId={user.shop_id}
+            onProductAdded={loadData}
+          />
+        )}
+
         {/* Stock Entry Table */}
         <StockEntryTable
           entries={stockEntries}
