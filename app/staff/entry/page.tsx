@@ -105,10 +105,6 @@ export default function StaffEntryPage() {
     return stockEntries.reduce((sum, e) => sum + (e.sale_value || 0), 0);
   }, [stockEntries]);
 
-  const cashShortage = useMemo(() => {
-    return counterClosing - totalCredit;
-  }, [counterClosing, totalCredit]);
-
   const totalBottlesSold = useMemo(() => {
     return stockEntries.reduce((sum, e) => sum + (e.sold_qty || 0), 0);
   }, [stockEntries]);
@@ -116,6 +112,10 @@ export default function StaffEntryPage() {
   const counterClosing = useMemo(() => {
     return totalCash + totalUpiBank + totalExtraIncome - totalExpenses;
   }, [totalCash, totalUpiBank, totalExtraIncome, totalExpenses]);
+
+  const cashShortage = useMemo(() => {
+    return counterClosing - totalCredit;
+  }, [counterClosing, totalCredit]);
 
   // Update cashEntry when computed values change
   useEffect(() => {
