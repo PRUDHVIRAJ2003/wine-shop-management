@@ -76,9 +76,9 @@ export default function ExtraTransactions({
             <div className="col-span-2">
               <Input
                 type="number"
-                value={transaction.amount}
+                value={transaction.amount === 0 ? '' : transaction.amount}
+                placeholder="0"
                 onChange={(e) => onUpdate(index, 'amount', parseFloat(e.target.value) || 0)}
-                placeholder="Amount"
                 disabled={isLocked}
                 min="0"
                 step="0.01"

@@ -28,6 +28,11 @@ export default function AdminEntryPage() {
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [loading, setLoading] = useState(true);
   
+  // Filter states
+  const [brandFilter, setBrandFilter] = useState<string>('');
+  const [sizeFilter, setSizeFilter] = useState<string>('');
+  const [typeFilter, setTypeFilter] = useState<string>('');
+  
   // Stock and cash data
   const [stockEntries, setStockEntries] = useState<(DailyStockEntry & { product?: Product })[]>([]);
   const [cashEntry, setCashEntry] = useState<Partial<DailyCashEntry>>({
@@ -370,6 +375,34 @@ export default function AdminEntryPage() {
     localStorage.setItem('selectedShopId', shopId);
   };
 
+  const resetFilters = () => {
+    setBrandFilter('');
+    setSizeFilter('');
+    setTypeFilter('');
+  };
+
+  // Get unique values for filters
+  const uniqueBrands = useMemo(() => {
+    const brands = stockEntries
+      .map(e => e.product?.brand_name)
+      .filter(Boolean) as string[];
+    return Array.from(new Set(brands)).sort();
+  }, [stockEntries]);
+
+  const uniqueSizes = useMemo(() => {
+    const sizes = stockEntries
+      .map(e => e.product?.product_size?.size_ml)
+      .filter(Boolean) as number[];
+    return Array.from(new Set(sizes)).sort((a, b) => a - b);
+  }, [stockEntries]);
+
+  const uniqueTypes = useMemo(() => {
+    const types = stockEntries
+      .map(e => e.product?.product_type?.name)
+      .filter(Boolean) as string[];
+    return Array.from(new Set(types)).sort();
+  }, [stockEntries]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -419,14 +452,77 @@ export default function AdminEntryPage() {
           </div>
         </div>
 
+        {/* Filter Section */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <h3 className="text-lg font-semibold mb-3 text-primary">🔍 Filters</h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Brand Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+              <Select
+                value={brandFilter}
+                onChange={(e) => setBrandFilter(e.target.value)}
+                className="w-full"
+              >
+                <option value="">All Brands</option>
+                {uniqueBrands.map(brand => (
+                  <option key={brand} value={brand}>{brand}</option>
+                ))}
+              </Select>
+            </div>
+            
+            {/* Size Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Size (ml)</label>
+              <Select
+                value={sizeFilter}
+                onChange={(e) => setSizeFilter(e.target.value)}
+                className="w-full"
+              >
+                <option value="">All Sizes</option>
+                {uniqueSizes.map(size => (
+                  <option key={size} value={size.toString()}>{size} ml</option>
+                ))}
+              </Select>
+            </div>
+            
+            {/* Type Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+              <Select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="w-full"
+              >
+                <option value="">All Types</option>
+                {uniqueTypes.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </Select>
+            </div>
+            
+            {/* Reset Button */}
+            <div className="flex items-end">
+              <Button
+                onClick={resetFilters}
+                variant="outline"
+                className="w-full"
+              >
+                🔄 Reset Filters
+              </Button>
+            </div>
+          </div>
+        </div>
+
         {/* Stock Entry Table */}
         <div className="mb-6">
           <StockEntryTable
             entries={stockEntries}
             onUpdate={updateStockEntry}
             isLocked={false}
-            brandFilter=""
-            sizeFilter=""
+            brandFilter={brandFilter}
+            sizeFilter={sizeFilter}
+            typeFilter={typeFilter}
           />
         </div>
 
@@ -461,7 +557,8 @@ export default function AdminEntryPage() {
                 <label className="text-sm font-medium text-gray-700">Google Pay</label>
                 <Input
                   type="number"
-                  value={cashEntry.google_pay || 0}
+                  value={cashEntry.google_pay === 0 ? '' : cashEntry.google_pay}
+                  placeholder="0"
                   onChange={(e) => updateCashDenomination('google_pay', parseFloat(e.target.value) || 0)}
                   step="0.01"
                 />
@@ -470,7 +567,8 @@ export default function AdminEntryPage() {
                 <label className="text-sm font-medium text-gray-700">PhonePe/Paytm</label>
                 <Input
                   type="number"
-                  value={cashEntry.phonepe_paytm || 0}
+                  value={cashEntry.phonepe_paytm === 0 ? '' : cashEntry.phonepe_paytm}
+                  placeholder="0"
                   onChange={(e) => updateCashDenomination('phonepe_paytm', parseFloat(e.target.value) || 0)}
                   step="0.01"
                 />
@@ -479,7 +577,8 @@ export default function AdminEntryPage() {
                 <label className="text-sm font-medium text-gray-700">Bank Transfer</label>
                 <Input
                   type="number"
-                  value={cashEntry.bank_transfer || 0}
+                  value={cashEntry.bank_transfer === 0 ? '' : cashEntry.bank_transfer}
+                  placeholder="0"
                   onChange={(e) => updateCashDenomination('bank_transfer', parseFloat(e.target.value) || 0)}
                   step="0.01"
                 />

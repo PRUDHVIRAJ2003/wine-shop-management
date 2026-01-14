@@ -10,6 +10,7 @@ interface StockEntryTableProps {
   isLocked: boolean;
   brandFilter: string;
   sizeFilter: string;
+  typeFilter?: string;
 }
 
 export default function StockEntryTable({
@@ -18,6 +19,7 @@ export default function StockEntryTable({
   isLocked,
   brandFilter,
   sizeFilter,
+  typeFilter = '',
 }: StockEntryTableProps) {
   // Filter entries
   const filteredEntries = entries.filter((entry) => {
@@ -25,7 +27,9 @@ export default function StockEntryTable({
       entry.product?.brand_name.toLowerCase().includes(brandFilter.toLowerCase());
     const matchesSize = !sizeFilter || 
       entry.product?.product_size?.size_ml.toString() === sizeFilter;
-    return matchesBrand && matchesSize;
+    const matchesType = !typeFilter || 
+      entry.product?.product_type?.name === typeFilter;
+    return matchesBrand && matchesSize && matchesType;
   });
 
   // Calculate totals
@@ -82,7 +86,8 @@ export default function StockEntryTable({
                 <td className="px-3 py-2">
                   <Input
                     type="number"
-                    value={entry.purchases}
+                    value={entry.purchases === 0 ? '' : entry.purchases}
+                    placeholder="0"
                     onChange={(e) => onUpdate(entry.id, 'purchases', parseInt(e.target.value) || 0)}
                     disabled={isLocked}
                     className="w-20 h-8 text-right p-1"
@@ -92,7 +97,8 @@ export default function StockEntryTable({
                 <td className="px-3 py-2">
                   <Input
                     type="number"
-                    value={entry.transfer}
+                    value={entry.transfer === 0 ? '' : entry.transfer}
+                    placeholder="0"
                     onChange={(e) => onUpdate(entry.id, 'transfer', parseInt(e.target.value) || 0)}
                     disabled={isLocked}
                     className="w-20 h-8 text-right p-1"
@@ -102,7 +108,8 @@ export default function StockEntryTable({
                 <td className="px-3 py-2">
                   <Input
                     type="number"
-                    value={entry.closing_stock}
+                    value={entry.closing_stock === 0 ? '' : entry.closing_stock}
+                    placeholder="0"
                     onChange={(e) => onUpdate(entry.id, 'closing_stock', parseInt(e.target.value) || 0)}
                     disabled={isLocked}
                     className="w-20 h-8 text-right p-1"
