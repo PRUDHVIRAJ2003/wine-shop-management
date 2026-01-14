@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Label } from '@/components/ui/Label';
-import { Trash2, Plus, Filter } from 'lucide-react';
+import { Plus, Filter } from 'lucide-react';
 
 export default function ProductManagementPage() {
   const router = useRouter();
@@ -33,6 +33,7 @@ export default function ProductManagementPage() {
   const [showProductForm, setShowProductForm] = useState(false);
   const [showTypeForm, setShowTypeForm] = useState(false);
   const [showSizeForm, setShowSizeForm] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   
   const [productForm, setProductForm] = useState({
     brand_name: '',
@@ -42,6 +43,7 @@ export default function ProductManagementPage() {
     shop_id: '',
   });
 
+  const [editProduct, setEditProduct] = useState<any>(null);
   const [newType, setNewType] = useState('');
   const [newSize, setNewSize] = useState(0);
 
@@ -185,16 +187,57 @@ export default function ProductManagementPage() {
     }
   };
 
-  const handleDeleteProduct = async (productId: string) => {
-    if (!confirm('Are you sure you want to delete this product?')) return;
+  const handleEditProduct = (product: any) => {
+    setEditProduct({
+      id: product.id,
+      brand_name: product.brand_name,
+      type_id: product.type_id,
+      size_id: product.size_id,
+      mrp: product.mrp,
+      shop_id: product.shop_id
+    });
+    setShowEditModal(true);
+  };
 
-    const { error } = await supabase
-      .from('products')
-      .delete()
-      .eq('id', productId);
-
-    if (!error) {
+  const handleSaveProduct = async () => {
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update({
+          brand_name: editProduct.brand_name,
+          type_id: editProduct.type_id,
+          size_id: editProduct.size_id,
+          mrp: editProduct.mrp,
+          shop_id: editProduct.shop_id
+        })
+        .eq('id', editProduct.id);
+      
+      if (error) throw error;
+      
+      alert('✅ Product updated successfully!');
+      setShowEditModal(false);
       loadData();
+    } catch (error: any) {
+      alert('❌ Error updating product: ' + error.message);
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string, productName: string) => {
+    const confirmed = confirm(`Are you sure you want to delete "${productName}"?`);
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId);
+
+      if (error) throw error;
+
+      alert('✅ Product deleted successfully!');
+      loadData();
+    } catch (error: any) {
+      alert('❌ Error deleting product: ' + error.message);
     }
   };
 
@@ -466,13 +509,22 @@ export default function ProductManagementPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleDeleteProduct(product.id)}
-                        >
-                          <Trash2 size={16} />
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => handleEditProduct(product)}
+                            className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm font-medium transition"
+                            title="Edit Product"
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteProduct(product.id, product.brand_name)}
+                            className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-medium transition"
+                            title="Delete Product"
+                          >
+                            🗑️ Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -487,6 +539,97 @@ export default function ProductManagementPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Edit Product Modal */}
+        {showEditModal && editProduct && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
+              <h3 className="text-xl font-bold mb-4 text-[#722F37]">Edit Product</h3>
+              
+              <div className="space-y-4">
+                {/* Brand Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Brand Name</label>
+                  <input
+                    type="text"
+                    value={editProduct.brand_name}
+                    onChange={(e) => setEditProduct({...editProduct, brand_name: e.target.value})}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#722F37]"
+                  />
+                </div>
+                
+                {/* Type Dropdown */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                  <select
+                    value={editProduct.type_id}
+                    onChange={(e) => setEditProduct({...editProduct, type_id: e.target.value})}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#722F37]"
+                  >
+                    {productTypes.map((type: any) => (
+                      <option key={type.id} value={type.id}>{type.name}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                {/* Size Dropdown */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Size (ml)</label>
+                  <select
+                    value={editProduct.size_id}
+                    onChange={(e) => setEditProduct({...editProduct, size_id: e.target.value})}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#722F37]"
+                  >
+                    {productSizes.map((size: any) => (
+                      <option key={size.id} value={size.id}>{size.size_ml} ml</option>
+                    ))}
+                  </select>
+                </div>
+                
+                {/* MRP */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">MRP (₹)</label>
+                  <input
+                    type="number"
+                    value={editProduct.mrp}
+                    onChange={(e) => setEditProduct({...editProduct, mrp: parseFloat(e.target.value) || 0})}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#722F37]"
+                  />
+                </div>
+
+                {/* Shop Dropdown */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Shop</label>
+                  <select
+                    value={editProduct.shop_id}
+                    onChange={(e) => setEditProduct({...editProduct, shop_id: e.target.value})}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#722F37]"
+                  >
+                    {shops.map((shop: any) => (
+                      <option key={shop.id} value={shop.id}>{shop.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              
+              {/* Modal Buttons */}
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveProduct}
+                  className="px-4 py-2 bg-[#722F37] text-white rounded-md hover:bg-[#5a252c] transition"
+                >
+                  💾 Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
