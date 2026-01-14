@@ -13,10 +13,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import StockEntryTable from '@/components/StockEntryTable';
 import CashDenomination from '@/components/CashDenomination';
 import ExtraTransactions from '@/components/ExtraTransactions';
-import { Wine, LogOut, Plus, Calendar, FileDown } from 'lucide-react';
+import { Wine, LogOut, Plus, Calendar } from 'lucide-react';
 import { formatCurrency, getTodayDate, getYesterdayDate } from '@/lib/utils';
 import ProductModal from '@/components/ProductModal';
-import { generateDailyReportPDF, downloadPDF } from '@/lib/pdf-generator';
 
 export default function StaffEntryPage() {
   const router = useRouter();
@@ -527,11 +526,137 @@ export default function StaffEntryPage() {
 
   const handleLockAndSend = async () => {
     try {
+      // Confirm action
+      const confirmed = confirm(
+        'This will:\n' +
+        '1. Save all current data\n' +
+        '2. Carry forward stock to next day\n' +
+        '3. Lock this entry for approval\n\n' +
+        'Continue?'
+      );
+      
+      if (!confirmed) return;
+      
       setLoading(true);
       
-      // Save all data first
+      // ============================================
+      // ACTION 1: Save current data
+      // ============================================
       await saveAllData();
       
+      // ============================================
+      // ACTION 2: Carry forward to NEXT day
+      // ============================================
+      const currentDate = new Date(selectedDate);
+      const nextDate = new Date(currentDate);
+      nextDate.setDate(nextDate.getDate() + 1);
+      const nextDateStr = nextDate.toISOString().split('T')[0];
+      
+      console.log(`Carrying forward from ${selectedDate} to ${nextDateStr}`);
+      
+      // Get today's stock entries with closing stock
+      const { data: todayStockEntries } = await supabase
+        .from('daily_stock_entries')
+        .select('product_id, closing_stock, closing_stock_value')
+        .eq('shop_id', user?.shop_id)
+        .eq('entry_date', selectedDate);
+      
+      if (todayStockEntries && todayStockEntries.length > 0) {
+        // For each product, create/update tomorrow's entry with opening stock
+        for (const entry of todayStockEntries) {
+          // Check if tomorrow's entry exists
+          const { data: existingEntry } = await supabase
+            .from('daily_stock_entries')
+            .select('id')
+            .eq('shop_id', user?.shop_id)
+            .eq('product_id', entry.product_id)
+            .eq('entry_date', nextDateStr)
+            .single();
+          
+          if (existingEntry) {
+            // Update existing entry's opening stock
+            await supabase
+              .from('daily_stock_entries')
+              .update({ 
+                opening_stock: entry.closing_stock 
+              })
+              .eq('id', existingEntry.id);
+          } else {
+            // Insert new entry with opening stock from today's closing
+            await supabase
+              .from('daily_stock_entries')
+              .insert({
+                shop_id: user?.shop_id,
+                product_id: entry.product_id,
+                entry_date: nextDateStr,
+                opening_stock: entry.closing_stock,
+                purchases: 0,
+                transfer: 0,
+                closing_stock: entry.closing_stock,
+                sold_qty: 0,
+                sale_value: 0,
+                closing_stock_value: entry.closing_stock_value || 0
+              });
+          }
+        }
+        console.log('Stock entries carried forward successfully!');
+      }
+      
+      // Carry forward Counter Closing → Counter Opening
+      const { data: todayCashEntry } = await supabase
+        .from('daily_cash_entries')
+        .select('counter_closing')
+        .eq('shop_id', user?.shop_id)
+        .eq('entry_date', selectedDate)
+        .single();
+      
+      if (todayCashEntry && todayCashEntry.counter_closing != null) {
+        // Check if tomorrow's cash entry exists
+        const { data: existingCashEntry } = await supabase
+          .from('daily_cash_entries')
+          .select('id')
+          .eq('shop_id', user?.shop_id)
+          .eq('entry_date', nextDateStr)
+          .single();
+        
+        if (existingCashEntry) {
+          // Update counter opening
+          await supabase
+            .from('daily_cash_entries')
+            .update({ 
+              counter_opening: todayCashEntry.counter_closing 
+            })
+            .eq('id', existingCashEntry.id);
+        } else {
+          // Insert new cash entry
+          await supabase
+            .from('daily_cash_entries')
+            .insert({
+              shop_id: user?.shop_id,
+              entry_date: nextDateStr,
+              counter_opening: todayCashEntry.counter_closing,
+              denom_500: 0,
+              denom_200: 0,
+              denom_100: 0,
+              denom_50: 0,
+              denom_20: 0,
+              denom_10: 0,
+              denom_5: 0,
+              denom_2: 0,
+              denom_1: 0,
+              google_pay: 0,
+              phonepe_paytm: 0,
+              bank_transfer: 0,
+              counter_closing: 0,
+              cash_shortage: 0
+            });
+        }
+        console.log('Counter opening carried forward successfully!');
+      }
+      
+      // ============================================
+      // ACTION 3: Lock entry & send for approval
+      // ============================================
       // Update daily_cash_entries to set is_locked = true
       const { error: lockError } = await supabase
         .from('daily_cash_entries')
@@ -564,9 +689,15 @@ export default function StaffEntryPage() {
         locked_at: new Date().toISOString(),
       }));
       
-      alert('✅ Entry locked and sent for approval successfully!');
+      alert(
+        '✅ Success!\n\n' +
+        '• Data saved\n' +
+        '• Stock carried forward to ' + nextDateStr + '\n' +
+        '• Entry locked and sent for approval'
+      );
       
     } catch (error: any) {
+      console.error('Error in lock and approve:', error);
       alert('❌ Error: ' + error.message);
     } finally {
       setLoading(false);
@@ -608,32 +739,6 @@ export default function StaffEntryPage() {
       alert('❌ Error: ' + error.message);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleGeneratePDF = () => {
-    try {
-      if (!shop || !cashEntry.id) {
-        alert('No data available to generate PDF');
-        return;
-      }
-      
-      const pdfData = {
-        shopName: shop.name,
-        entryDate: selectedDate,
-        stockEntries: stockEntries,
-        cashEntry: cashEntry as DailyCashEntry,
-        extraTransactions: extraTransactions as ExtraTransaction[]
-      };
-      
-      const doc = generateDailyReportPDF(pdfData);
-      const fileName = `${selectedDate}-${shop.name.replace(/\s+/g, '-')}.pdf`;
-      downloadPDF(doc, fileName);
-      
-      alert('✅ PDF generated successfully!');
-    } catch (error: any) {
-      console.error('Error generating PDF:', error);
-      alert('❌ Error generating PDF: ' + error.message);
     }
   };
 
@@ -897,10 +1002,6 @@ export default function StaffEntryPage() {
 
         {/* Action Buttons */}
         <div className="flex justify-end space-x-4">
-          <Button variant="outline" onClick={handleGeneratePDF} size="lg">
-            <FileDown size={20} className="mr-2" />
-            Generate PDF Report
-          </Button>
           <Button onClick={saveAllData} size="lg" disabled={cashEntry.is_locked || loading}>
             Save Changes
           </Button>
