@@ -537,10 +537,15 @@ export default function StaffEntryPage() {
     
     if (entry.id) {
       // Delete from database
-      await supabase
+      const { error } = await supabase
         .from('daily_credit_entries')
         .delete()
         .eq('id', entry.id);
+      
+      if (error) {
+        alert('❌ Error deleting credit entry: ' + error.message);
+        return;
+      }
     }
     
     // Remove from state
@@ -551,45 +556,55 @@ export default function StaffEntryPage() {
   const saveCreditEntries = async () => {
     if (!user?.shop_id) return;
     
-    for (const entry of creditEntries) {
-      if (entry.person_name && entry.amount > 0) {
-        if (entry.id) {
-          // Update existing
-          await supabase
-            .from('daily_credit_entries')
-            .update({
-              person_name: entry.person_name,
-              amount: entry.amount,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', entry.id);
-        } else {
-          // Insert new
-          await supabase
-            .from('daily_credit_entries')
-            .insert({
+    try {
+      for (const entry of creditEntries) {
+        if (entry.person_name && entry.amount > 0) {
+          if (entry.id) {
+            // Update existing
+            const { error } = await supabase
+              .from('daily_credit_entries')
+              .update({
+                person_name: entry.person_name,
+                amount: entry.amount,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', entry.id);
+            
+            if (error) throw error;
+          } else {
+            // Insert new
+            const { error } = await supabase
+              .from('daily_credit_entries')
+              .insert({
+                shop_id: user.shop_id,
+                entry_date: selectedDate,
+                person_name: entry.person_name,
+                amount: entry.amount
+              });
+            
+            if (error) throw error;
+          }
+          
+          // Add to debtors table for auto-suggest (upsert)
+          const { error: debtorError } = await supabase
+            .from('debtors')
+            .upsert({
               shop_id: user.shop_id,
-              entry_date: selectedDate,
-              person_name: entry.person_name,
-              amount: entry.amount
+              person_name: entry.person_name
+            }, {
+              onConflict: 'shop_id,person_name'
             });
+          
+          if (debtorError) throw debtorError;
         }
-        
-        // Add to debtors table for auto-suggest (upsert)
-        await supabase
-          .from('debtors')
-          .upsert({
-            shop_id: user.shop_id,
-            person_name: entry.person_name
-          }, {
-            onConflict: 'shop_id,person_name',
-            ignoreDuplicates: true
-          });
       }
+      
+      // Reload previous debtors to update the list
+      await loadPreviousDebtors();
+    } catch (error: any) {
+      console.error('Error saving credit entries:', error);
+      throw error;
     }
-    
-    // Reload previous debtors to update the list
-    await loadPreviousDebtors();
   };
 
   const saveAllData = async () => {
