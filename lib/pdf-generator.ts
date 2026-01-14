@@ -113,21 +113,21 @@ export function generateDailyReportPDF(data: PDFData): jsPDF {
       textColor: darkGray
     },
     columnStyles: {
-      0: { cellWidth: 12, halign: 'center' },
-      1: { cellWidth: 28, halign: 'left' },
-      2: { cellWidth: 18, halign: 'center' },
-      3: { cellWidth: 14, halign: 'center' },
-      4: { cellWidth: 22, halign: 'right' },
-      5: { cellWidth: 12, halign: 'center' },
-      6: { cellWidth: 12, halign: 'center' },
-      7: { cellWidth: 12, halign: 'center' },
-      8: { cellWidth: 12, halign: 'center' },
-      9: { cellWidth: 12, halign: 'center' },
-      10: { cellWidth: 22, halign: 'right' },
-      11: { cellWidth: 22, halign: 'right' }
+      0: { cellWidth: 9, halign: 'center' },
+      1: { cellWidth: 22, halign: 'left' },
+      2: { cellWidth: 16, halign: 'center' },
+      3: { cellWidth: 12, halign: 'center' },
+      4: { cellWidth: 18, halign: 'right' },
+      5: { cellWidth: 11, halign: 'center' },
+      6: { cellWidth: 11, halign: 'center' },
+      7: { cellWidth: 11, halign: 'center' },
+      8: { cellWidth: 11, halign: 'center' },
+      9: { cellWidth: 11, halign: 'center' },
+      10: { cellWidth: 18, halign: 'right' },
+      11: { cellWidth: 18, halign: 'right' }
     },
     margin: { left: 14, right: 14 },
-    tableWidth: 'auto',
+    tableWidth: 'wrap',
     theme: 'grid'
   });
   
