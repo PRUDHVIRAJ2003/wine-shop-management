@@ -47,45 +47,55 @@ export default function ExtraTransactions({
 
       <div className="space-y-3">
         {transactions.map((transaction, index) => (
-          <div key={index} className="flex items-center space-x-2 p-2 bg-gray-50 rounded">
-            <Select
-              value={transaction.transaction_type}
-              onChange={(e) => onUpdate(index, 'transaction_type', e.target.value)}
-              disabled={isLocked}
-              className="w-32"
-            >
-              <option value="income">(+) Income</option>
-              <option value="expense">(-) Expense</option>
-            </Select>
+          <div key={index} className="grid grid-cols-12 gap-3 items-center">
+            {/* Type dropdown - 3 columns */}
+            <div className="col-span-3">
+              <Select
+                value={transaction.transaction_type}
+                onChange={(e) => onUpdate(index, 'transaction_type', e.target.value)}
+                disabled={isLocked}
+              >
+                <option value="income">(+) Income</option>
+                <option value="expense">(-) Expense</option>
+              </Select>
+            </div>
 
-            <Input
-              type="text"
-              value={transaction.description}
-              onChange={(e) => onUpdate(index, 'description', e.target.value)}
-              placeholder="Description"
-              disabled={isLocked}
-              className="flex-1"
-            />
+            {/* Description - 6 columns (BIGGER) */}
+            <div className="col-span-6">
+              <Input
+                type="text"
+                value={transaction.description}
+                onChange={(e) => onUpdate(index, 'description', e.target.value)}
+                placeholder="Enter description..."
+                disabled={isLocked}
+                className="w-full"
+              />
+            </div>
 
-            <Input
-              type="number"
-              value={transaction.amount}
-              onChange={(e) => onUpdate(index, 'amount', parseFloat(e.target.value) || 0)}
-              placeholder="Amount"
-              disabled={isLocked}
-              className="w-32"
-              min="0"
-              step="0.01"
-            />
+            {/* Amount - 2 columns */}
+            <div className="col-span-2">
+              <Input
+                type="number"
+                value={transaction.amount}
+                onChange={(e) => onUpdate(index, 'amount', parseFloat(e.target.value) || 0)}
+                placeholder="Amount"
+                disabled={isLocked}
+                min="0"
+                step="0.01"
+              />
+            </div>
 
-            <Button
-              variant="destructive"
-              size="icon"
-              onClick={() => onDelete(index)}
-              disabled={isLocked}
-            >
-              <Trash2 size={16} />
-            </Button>
+            {/* Delete button - 1 column */}
+            <div className="col-span-1">
+              <Button
+                variant="destructive"
+                size="icon"
+                onClick={() => onDelete(index)}
+                disabled={isLocked}
+              >
+                <Trash2 size={16} />
+              </Button>
+            </div>
           </div>
         ))}
 

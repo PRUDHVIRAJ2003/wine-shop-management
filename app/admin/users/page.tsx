@@ -89,10 +89,24 @@ export default function UserManagementPage() {
     e.preventDefault();
 
     try {
-      // Create auth user (using service role would be needed in a real app)
-      // For now, this is a placeholder - actual implementation would need backend API
-      alert('User creation requires backend API. Please set up Supabase auth properly.');
-      
+      const response = await fetch('/api/auth/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: formData.username,
+          password: formData.password,
+          role: formData.role,
+          shopId: formData.shop_id || null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create user');
+      }
+
+      alert('User created successfully!');
       setShowForm(false);
       setFormData({
         username: '',
@@ -100,6 +114,7 @@ export default function UserManagementPage() {
         role: 'staff',
         shop_id: '',
       });
+      loadData();
     } catch (error: any) {
       alert('Error creating user: ' + error.message);
     }
@@ -108,13 +123,23 @@ export default function UserManagementPage() {
   const handleDeleteUser = async (userId: string) => {
     if (!confirm('Are you sure you want to delete this user?')) return;
 
-    const { error } = await supabase
-      .from('users')
-      .delete()
-      .eq('id', userId);
+    try {
+      const response = await fetch('/api/auth/delete-user', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
 
-    if (!error) {
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete user');
+      }
+
+      alert('User deleted successfully!');
       loadData();
+    } catch (error: any) {
+      alert('Error deleting user: ' + error.message);
     }
   };
 
