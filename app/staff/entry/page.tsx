@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { DailyStockEntry, DailyCashEntry, Product, ExtraTransaction, User, Shop } from '@/types';
@@ -60,6 +60,67 @@ export default function StaffEntryPage() {
   });
   
   const [extraTransactions, setExtraTransactions] = useState<Omit<ExtraTransaction, 'id' | 'cash_entry_id' | 'created_at'>[]>([]);
+
+  // Computed values using useMemo for reactivity
+  const totalExtraIncome = useMemo(() => {
+    return extraTransactions
+      .filter(t => t.transaction_type === 'income')
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+  }, [extraTransactions]);
+
+  const totalExpenses = useMemo(() => {
+    return extraTransactions
+      .filter(t => t.transaction_type === 'expense')
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+  }, [extraTransactions]);
+
+  const totalCash = useMemo(() => {
+    return (
+      (cashEntry.denom_500 || 0) * 500 +
+      (cashEntry.denom_200 || 0) * 200 +
+      (cashEntry.denom_100 || 0) * 100 +
+      (cashEntry.denom_50 || 0) * 50 +
+      (cashEntry.denom_20 || 0) * 20 +
+      (cashEntry.denom_10 || 0) * 10 +
+      (cashEntry.denom_5 || 0) * 5 +
+      (cashEntry.denom_2 || 0) * 2 +
+      (cashEntry.denom_1 || 0) * 1
+    );
+  }, [cashEntry.denom_500, cashEntry.denom_200, cashEntry.denom_100, cashEntry.denom_50, 
+      cashEntry.denom_20, cashEntry.denom_10, cashEntry.denom_5, cashEntry.denom_2, cashEntry.denom_1]);
+
+  const totalUpiBank = useMemo(() => {
+    return (cashEntry.google_pay || 0) + (cashEntry.phonepe_paytm || 0) + (cashEntry.bank_transfer || 0);
+  }, [cashEntry.google_pay, cashEntry.phonepe_paytm, cashEntry.bank_transfer]);
+
+  const totalSaleValue = useMemo(() => {
+    return stockEntries.reduce((sum, e) => sum + (e.sale_value || 0), 0);
+  }, [stockEntries]);
+
+  const cashShortage = useMemo(() => {
+    return totalSaleValue - totalCash;
+  }, [totalSaleValue, totalCash]);
+
+  const totalBottlesSold = useMemo(() => {
+    return stockEntries.reduce((sum, e) => sum + (e.sold_qty || 0), 0);
+  }, [stockEntries]);
+
+  const counterClosing = useMemo(() => {
+    return totalCash + totalUpiBank + totalExtraIncome - totalExpenses;
+  }, [totalCash, totalUpiBank, totalExtraIncome, totalExpenses]);
+
+  // Update cashEntry when computed values change
+  useEffect(() => {
+    setCashEntry(prev => ({
+      ...prev,
+      total_cash: totalCash,
+      total_upi_bank: totalUpiBank,
+      total_sale_value: totalSaleValue,
+      cash_shortage: cashShortage,
+      total_bottles_sold: totalBottlesSold,
+      counter_closing: counterClosing,
+    }));
+  }, [totalCash, totalUpiBank, totalSaleValue, cashShortage, totalBottlesSold, counterClosing]);
 
   useEffect(() => {
     checkAuth();
@@ -270,83 +331,153 @@ export default function StaffEntryPage() {
     updates.sale_value = sale_value;
     updates.closing_stock_value = closing_stock_value;
 
-    await supabase
-      .from('daily_stock_entries')
-      .update(updates)
-      .eq('id', id);
-
+    // Update local state only - don't auto-save to database
     setStockEntries(prev => prev.map(e => 
       e.id === id ? { ...e, ...updates } : e
     ));
   };
 
   const updateCashDenomination = (field: string, value: number) => {
-    setCashEntry(prev => {
-      const updated = { ...prev, [field]: value };
-      
-      // Calculate total cash
-      const total_cash = 
-        (updated.denom_500 || 0) * 500 +
-        (updated.denom_200 || 0) * 200 +
-        (updated.denom_100 || 0) * 100 +
-        (updated.denom_50 || 0) * 50 +
-        (updated.denom_20 || 0) * 20 +
-        (updated.denom_10 || 0) * 10 +
-        (updated.denom_5 || 0) * 5 +
-        (updated.denom_2 || 0) * 2 +
-        (updated.denom_1 || 0) * 1;
-
-      updated.total_cash = total_cash;
-      
-      // Calculate cash shortage and counter closing
-      const total_sale_value = stockEntries.reduce((sum, e) => sum + e.sale_value, 0);
-      const cash_shortage = total_sale_value - total_cash;
-      const total_upi_bank = (updated.google_pay || 0) + (updated.phonepe_paytm || 0) + (updated.bank_transfer || 0);
-      
-      const extraIncome = extraTransactions
-        .filter(t => t.transaction_type === 'income')
-        .reduce((sum, t) => sum + t.amount, 0);
-      
-      const extraExpense = extraTransactions
-        .filter(t => t.transaction_type === 'expense')
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      const counter_closing = total_cash + total_upi_bank + extraIncome - extraExpense;
-
-      updated.total_sale_value = total_sale_value;
-      updated.cash_shortage = cash_shortage;
-      updated.total_upi_bank = total_upi_bank;
-      updated.counter_closing = counter_closing;
-      updated.total_bottles_sold = stockEntries.reduce((sum, e) => sum + e.sold_qty, 0);
-
-      return updated;
-    });
+    setCashEntry(prev => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
-  const saveCashEntry = async () => {
+  const saveAllData = async () => {
     if (!cashEntry.id) return;
 
-    await supabase
-      .from('daily_cash_entries')
-      .update(cashEntry)
-      .eq('id', cashEntry.id);
+    try {
+      // Save all stock entries
+      for (const entry of stockEntries) {
+        await supabase
+          .from('daily_stock_entries')
+          .update({
+            opening_stock: entry.opening_stock,
+            purchases: entry.purchases,
+            transfer: entry.transfer,
+            closing_stock: entry.closing_stock,
+            sold_qty: entry.sold_qty,
+            sale_value: entry.sale_value,
+            closing_stock_value: entry.closing_stock_value,
+          })
+          .eq('id', entry.id);
+      }
 
-    // Save extra transactions
-    if (extraTransactions.length > 0) {
-      // Delete existing and insert new
+      // Save cash entry
       await supabase
-        .from('extra_transactions')
-        .delete()
-        .eq('cash_entry_id', cashEntry.id);
+        .from('daily_cash_entries')
+        .update(cashEntry)
+        .eq('id', cashEntry.id);
 
+      // Save extra transactions
+      if (extraTransactions.length > 0) {
+        // Delete existing and insert new
+        await supabase
+          .from('extra_transactions')
+          .delete()
+          .eq('cash_entry_id', cashEntry.id);
+
+        await supabase
+          .from('extra_transactions')
+          .insert(
+            extraTransactions.map(t => ({
+              ...t,
+              cash_entry_id: cashEntry.id,
+            }))
+          );
+      }
+
+      alert('✅ Data saved successfully!');
+    } catch (error: any) {
+      alert('❌ Error saving data: ' + error.message);
+      throw error;
+    }
+  };
+
+  const handleLockAndSend = async () => {
+    try {
+      setLoading(true);
+      
+      // Save all data first
+      await saveAllData();
+      
+      // Update daily_cash_entries to set is_locked = true
+      const { error: lockError } = await supabase
+        .from('daily_cash_entries')
+        .update({ 
+          is_locked: true, 
+          locked_at: new Date().toISOString() 
+        })
+        .eq('shop_id', user?.shop_id)
+        .eq('entry_date', selectedDate);
+      
+      if (lockError) throw lockError;
+      
+      // Create approval request
+      const { error: approvalError } = await supabase
+        .from('approval_requests')
+        .insert({
+          shop_id: user?.shop_id,
+          entry_date: selectedDate,
+          request_type: 'lock',
+          requested_by: user?.id,
+          status: 'pending'
+        });
+      
+      if (approvalError) throw approvalError;
+      
+      // Update local state
+      setCashEntry(prev => ({
+        ...prev,
+        is_locked: true,
+        locked_at: new Date().toISOString(),
+      }));
+      
+      alert('✅ Entry locked and sent for approval successfully!');
+      
+    } catch (error: any) {
+      alert('❌ Error: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRequestUnlock = async () => {
+    try {
+      setLoading(true);
+      
+      const { error } = await supabase
+        .from('approval_requests')
+        .insert({
+          shop_id: user?.shop_id,
+          entry_date: selectedDate,
+          request_type: 'unlock',
+          requested_by: user?.id,
+          status: 'pending'
+        });
+      
+      if (error) throw error;
+      
+      // Update the cash entry to mark unlock requested
       await supabase
-        .from('extra_transactions')
-        .insert(
-          extraTransactions.map(t => ({
-            ...t,
-            cash_entry_id: cashEntry.id,
-          }))
-        );
+        .from('daily_cash_entries')
+        .update({ unlock_requested: true })
+        .eq('shop_id', user?.shop_id)
+        .eq('entry_date', selectedDate);
+      
+      // Update local state
+      setCashEntry(prev => ({
+        ...prev,
+        unlock_requested: true,
+      }));
+      
+      alert('✅ Unlock request sent to admin successfully!');
+      
+    } catch (error: any) {
+      alert('❌ Error: ' + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -468,7 +599,7 @@ export default function StaffEntryPage() {
               <div>
                 <label className="text-sm font-medium text-gray-700">Today Total Sale Value</label>
                 <div className="mt-1 text-2xl font-bold text-green-600">
-                  {formatCurrency(stockEntries.reduce((sum, e) => sum + e.sale_value, 0))}
+                  {formatCurrency(totalSaleValue)}
                 </div>
               </div>
             </CardContent>
@@ -512,7 +643,7 @@ export default function StaffEntryPage() {
               <div className="pt-2 border-t">
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total UPI/Bank:</span>
-                  <span className="text-secondary">{formatCurrency(cashEntry.total_upi_bank || 0)}</span>
+                  <span className="text-secondary">{formatCurrency(totalUpiBank)}</span>
                 </div>
               </div>
             </CardContent>
@@ -557,7 +688,7 @@ export default function StaffEntryPage() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-red-600">
-                {formatCurrency(cashEntry.cash_shortage || 0)}
+                {formatCurrency(cashShortage)}
               </div>
             </CardContent>
           </Card>
@@ -568,7 +699,7 @@ export default function StaffEntryPage() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-blue-600">
-                {stockEntries.reduce((sum, e) => sum + e.sold_qty, 0)}
+                {totalBottlesSold}
               </div>
             </CardContent>
           </Card>
@@ -579,7 +710,7 @@ export default function StaffEntryPage() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-green-600">
-                {formatCurrency(cashEntry.counter_closing || 0)}
+                {formatCurrency(counterClosing)}
               </div>
             </CardContent>
           </Card>
@@ -587,16 +718,16 @@ export default function StaffEntryPage() {
 
         {/* Action Buttons */}
         <div className="flex justify-end space-x-4">
-          <Button onClick={saveCashEntry} size="lg">
+          <Button onClick={saveAllData} size="lg" disabled={cashEntry.is_locked || loading}>
             Save Changes
           </Button>
           {!cashEntry.is_locked && (
-            <Button variant="secondary" size="lg">
+            <Button variant="secondary" size="lg" onClick={handleLockAndSend} disabled={loading}>
               Lock & Send for Approval
             </Button>
           )}
           {cashEntry.is_locked && !cashEntry.unlock_requested && (
-            <Button variant="outline" size="lg">
+            <Button variant="outline" size="lg" onClick={handleRequestUnlock} disabled={loading}>
               Request Unlock
             </Button>
           )}
