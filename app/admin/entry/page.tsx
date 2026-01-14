@@ -386,21 +386,21 @@ export default function AdminEntryPage() {
     const brands = stockEntries
       .map(e => e.product?.brand_name)
       .filter(Boolean) as string[];
-    return [...new Set(brands)].sort();
+    return Array.from(new Set(brands)).sort();
   }, [stockEntries]);
 
   const uniqueSizes = useMemo(() => {
     const sizes = stockEntries
       .map(e => e.product?.product_size?.size_ml)
       .filter(Boolean) as number[];
-    return [...new Set(sizes)].sort((a, b) => a - b);
+    return Array.from(new Set(sizes)).sort((a, b) => a - b);
   }, [stockEntries]);
 
   const uniqueTypes = useMemo(() => {
     const types = stockEntries
       .map(e => e.product?.product_type?.name)
       .filter(Boolean) as string[];
-    return [...new Set(types)].sort();
+    return Array.from(new Set(types)).sort();
   }, [stockEntries]);
 
   if (loading) {
