@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, FileText, Archive, Users, Package, LogOut, Wine } from 'lucide-react';
+import { LayoutDashboard, FileText, Archive, Users, Package, LogOut, Wine, Wallet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface AdminSidebarProps {
@@ -15,6 +15,7 @@ export default function AdminSidebar({ onSignOut }: AdminSidebarProps) {
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/admin/dashboard' },
     { icon: FileText, label: 'Entry View/Edit', href: '/admin/entry' },
+    { icon: Wallet, label: 'Deposits & Cash', href: '/admin/deposits' },
     { icon: Archive, label: 'PDF Archives', href: '/admin/archives' },
     { icon: Users, label: 'User Management', href: '/admin/users' },
     { icon: Package, label: 'Product Management', href: '/admin/products' },
