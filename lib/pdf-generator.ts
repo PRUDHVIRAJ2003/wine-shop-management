@@ -322,9 +322,9 @@ export function generateDailyReportPDF(data: PDFData): jsPDF {
   doc.setFont('helvetica', 'bold');
   
   // Calculate cash shortage with new formula
-  const totalCash = data.cashEntry.total_cash;
-  const totalSaleValue = data.cashEntry.total_sale_value;
-  const cashShortage = totalSaleValue - totalCash;
+  const cashTotal = data.cashEntry.total_cash;
+  const saleValue = data.cashEntry.total_sale_value;
+  const cashShortage = saleValue - cashTotal;
   
   // Display cash shortage with color coding logic
   let cashShortageText = '';
