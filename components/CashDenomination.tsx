@@ -11,28 +11,29 @@ interface CashDenominationProps {
     denom_50: number;
     denom_20: number;
     denom_10: number;
-    denom_5: number;
-    denom_2: number;
-    denom_1: number;
+    coins: number;
   };
   onUpdate: (field: string, value: number) => void;
   isLocked: boolean;
 }
 
 export default function CashDenomination({ denominations, onUpdate, isLocked }: CashDenominationProps) {
-  const denoms: { label: string; field: keyof typeof denominations; value: number }[] = [
+  const denoms: { label: string; field: keyof typeof denominations; value: number; isAmount?: boolean }[] = [
     { label: '₹500', field: 'denom_500', value: 500 },
     { label: '₹200', field: 'denom_200', value: 200 },
     { label: '₹100', field: 'denom_100', value: 100 },
     { label: '₹50', field: 'denom_50', value: 50 },
     { label: '₹20', field: 'denom_20', value: 20 },
     { label: '₹10', field: 'denom_10', value: 10 },
-    { label: '₹5', field: 'denom_5', value: 5 },
-    { label: '₹2', field: 'denom_2', value: 2 },
-    { label: '₹1', field: 'denom_1', value: 1 },
+    { label: 'Coins', field: 'coins', value: 1, isAmount: true },
   ];
 
-  const totalCash = denoms.reduce((sum, d) => sum + (denominations[d.field] * d.value), 0);
+  const totalCash = denoms.reduce((sum, d) => {
+    if (d.isAmount) {
+      return sum + (denominations[d.field] || 0);
+    }
+    return sum + (denominations[d.field] * d.value);
+  }, 0);
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
@@ -41,7 +42,8 @@ export default function CashDenomination({ denominations, onUpdate, isLocked }: 
         {denoms.map((denom) => (
           <div key={denom.field} className="flex items-center space-x-2">
             <Label className="w-16 text-right">{denom.label}</Label>
-            <span className="text-gray-500">×</span>
+            {!denom.isAmount && <span className="text-gray-500">×</span>}
+            {denom.isAmount && <span className="text-gray-500 invisible">×</span>}
             <Input
               type="number"
               value={denominations[denom.field] === 0 ? '' : denominations[denom.field]}
@@ -52,7 +54,7 @@ export default function CashDenomination({ denominations, onUpdate, isLocked }: 
               min="0"
             />
             <span className="text-sm text-gray-600 w-24 text-right">
-              = ₹{(denominations[denom.field] * denom.value).toFixed(2)}
+              {denom.isAmount ? '' : `= ₹${(denominations[denom.field] * denom.value).toFixed(2)}`}
             </span>
           </div>
         ))}

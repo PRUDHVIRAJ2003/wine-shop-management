@@ -69,11 +69,14 @@ export interface DailyCashEntry {
   denom_5: number;
   denom_2: number;
   denom_1: number;
+  coins: number;
   total_cash: number;
   google_pay: number;
   phonepe_paytm: number;
   bank_transfer: number;
   total_upi_bank: number;
+  bank_deposit: number;
+  cash_to_house: number;
   cash_shortage: number;
   total_bottles_sold: number;
   counter_closing: number;

@@ -46,11 +46,14 @@ export default function StaffEntryPage() {
     denom_5: 0,
     denom_2: 0,
     denom_1: 0,
+    coins: 0,
     total_cash: 0,
     google_pay: 0,
     phonepe_paytm: 0,
     bank_transfer: 0,
     total_upi_bank: 0,
+    bank_deposit: 0,
+    cash_to_house: 0,
     cash_shortage: 0,
     total_bottles_sold: 0,
     counter_closing: 0,
@@ -90,16 +93,14 @@ export default function StaffEntryPage() {
       (cashEntry.denom_50 || 0) * 50 +
       (cashEntry.denom_20 || 0) * 20 +
       (cashEntry.denom_10 || 0) * 10 +
-      (cashEntry.denom_5 || 0) * 5 +
-      (cashEntry.denom_2 || 0) * 2 +
-      (cashEntry.denom_1 || 0) * 1
+      (cashEntry.coins || 0)
     );
   }, [cashEntry.denom_500, cashEntry.denom_200, cashEntry.denom_100, cashEntry.denom_50, 
-      cashEntry.denom_20, cashEntry.denom_10, cashEntry.denom_5, cashEntry.denom_2, cashEntry.denom_1]);
+      cashEntry.denom_20, cashEntry.denom_10, cashEntry.coins]);
 
   const totalUpiBank = useMemo(() => {
-    return (cashEntry.google_pay || 0) + (cashEntry.phonepe_paytm || 0) + (cashEntry.bank_transfer || 0);
-  }, [cashEntry.google_pay, cashEntry.phonepe_paytm, cashEntry.bank_transfer]);
+    return (cashEntry.phonepe_paytm || 0) + (cashEntry.bank_transfer || 0);
+  }, [cashEntry.phonepe_paytm, cashEntry.bank_transfer]);
 
   const totalSaleValue = useMemo(() => {
     return stockEntries.reduce((sum, e) => sum + (e.sale_value || 0), 0);
@@ -110,12 +111,12 @@ export default function StaffEntryPage() {
   }, [stockEntries]);
 
   const counterClosing = useMemo(() => {
-    return totalCash + totalUpiBank + totalExtraIncome - totalExpenses;
-  }, [totalCash, totalUpiBank, totalExtraIncome, totalExpenses]);
+    return totalCash + totalUpiBank;
+  }, [totalCash, totalUpiBank]);
 
   const cashShortage = useMemo(() => {
-    return counterClosing - totalCredit;
-  }, [counterClosing, totalCredit]);
+    return totalSaleValue - totalCash;
+  }, [totalSaleValue, totalCash]);
 
   // Update cashEntry when computed values change
   useEffect(() => {
@@ -835,7 +836,19 @@ export default function StaffEntryPage() {
       
     } catch (error: any) {
       console.error('Error in lock and approve:', error);
-      alert('❌ Error: ' + error.message);
+      
+      // Improved error handling
+      if (error.code === 'PGRST116') {
+        alert('❌ Entry not found. Please refresh and try again.');
+      } else if (error.message?.includes('timeout') || error.message?.includes('timed out')) {
+        alert('❌ Request timeout. Please check your connection and try again.');
+      } else if (error.message?.includes('duplicate') || error.code === '23505') {
+        alert('❌ Entry already exists. Please refresh the page.');
+      } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
+        alert('❌ Network error. Please check your internet connection and try again.');
+      } else {
+        alert(`❌ Error: ${error.message || 'Unknown error occurred'}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -1029,18 +1042,7 @@ export default function StaffEntryPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <label className="text-sm font-medium text-gray-700">Google Pay</label>
-                <Input
-                  type="number"
-                  value={cashEntry.google_pay === 0 ? '' : cashEntry.google_pay}
-                  placeholder="0"
-                  onChange={(e) => updateCashDenomination('google_pay', parseFloat(e.target.value) || 0)}
-                  disabled={cashEntry.is_locked}
-                  step="0.01"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">PhonePe/Paytm</label>
+                <label className="text-sm font-medium text-gray-700">PhonePe/Paytm/UPI</label>
                 <Input
                   type="number"
                   value={cashEntry.phonepe_paytm === 0 ? '' : cashEntry.phonepe_paytm}
@@ -1071,6 +1073,45 @@ export default function StaffEntryPage() {
           </Card>
         </div>
 
+        {/* Bank Deposit / Cash to Counter */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Bank Deposit / Cash to Counter</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <label className="text-sm font-medium text-gray-700">Bank Deposit (for Stock Purchase)</label>
+              <p className="text-xs text-gray-500 mb-1">Amount deposited to bank - recorded as expense</p>
+              <Input
+                type="number"
+                value={cashEntry.bank_deposit === 0 ? '' : cashEntry.bank_deposit}
+                placeholder="0"
+                onChange={(e) => updateCashDenomination('bank_deposit', parseFloat(e.target.value) || 0)}
+                disabled={cashEntry.is_locked}
+                step="0.01"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Cash to Owner</label>
+              <p className="text-xs text-gray-500 mb-1">Amount given to owner for personal use</p>
+              <Input
+                type="number"
+                value={cashEntry.cash_to_house === 0 ? '' : cashEntry.cash_to_house}
+                placeholder="0"
+                onChange={(e) => updateCashDenomination('cash_to_house', parseFloat(e.target.value) || 0)}
+                disabled={cashEntry.is_locked}
+                step="0.01"
+              />
+            </div>
+            <div className="pt-2 border-t">
+              <div className="flex justify-between text-lg font-bold">
+                <span>Total:</span>
+                <span className="text-secondary">{formatCurrency((cashEntry.bank_deposit || 0) + (cashEntry.cash_to_house || 0))}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Cash Denomination */}
         <CashDenomination
           denominations={{
@@ -1080,9 +1121,7 @@ export default function StaffEntryPage() {
             denom_50: cashEntry.denom_50 || 0,
             denom_20: cashEntry.denom_20 || 0,
             denom_10: cashEntry.denom_10 || 0,
-            denom_5: cashEntry.denom_5 || 0,
-            denom_2: cashEntry.denom_2 || 0,
-            denom_1: cashEntry.denom_1 || 0,
+            coins: cashEntry.coins || 0,
           }}
           onUpdate={updateCashDenomination}
           isLocked={cashEntry.is_locked || false}
@@ -1192,17 +1231,41 @@ export default function StaffEntryPage() {
         </div>
 
         {/* Summary Cards */}
+        <h3 className="text-xl font-bold text-[#722F37] mb-4">Today Trend</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
+          <Card className={`border-2 ${
+            cashShortage === 0 
+              ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-300' 
+              : cashShortage < 0 
+                ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-300' 
+                : 'bg-gradient-to-br from-red-50 to-red-100 border-red-300'
+          }`}>
             <CardHeader>
-              <CardTitle className="text-red-700">Cash Shortage</CardTitle>
+              <CardTitle className={
+                cashShortage === 0 
+                  ? 'text-green-700' 
+                  : cashShortage < 0 
+                    ? 'text-green-700' 
+                    : 'text-red-700'
+              }>Cash Shortage</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-red-600">
-                {formatCurrency(cashShortage)}
+              <div className={`text-3xl font-bold ${
+                cashShortage === 0 
+                  ? 'text-green-600' 
+                  : cashShortage < 0 
+                    ? 'text-green-600' 
+                    : 'text-red-600'
+              }`}>
+                {cashShortage === 0 
+                  ? 'NO CASH SHORTAGE' 
+                  : cashShortage < 0 
+                    ? `EXCESS CASH = ${formatCurrency(Math.abs(cashShortage))}` 
+                    : `CASH SHORTAGE = ${formatCurrency(cashShortage)}`
+                }
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                Counter Closing ({formatCurrency(counterClosing)}) - Credit Sales ({formatCurrency(totalCredit)})
+                Total Sale Value ({formatCurrency(totalSaleValue)}) - Total Cash ({formatCurrency(totalCash)})
               </p>
             </CardContent>
           </Card>
@@ -1226,6 +1289,9 @@ export default function StaffEntryPage() {
               <div className="text-3xl font-bold text-green-600">
                 {formatCurrency(counterClosing)}
               </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Total Cash + Total UPI/Bank
+              </p>
             </CardContent>
           </Card>
         </div>
