@@ -162,15 +162,13 @@ export function generateDailyReportPDF(data: PDFData): jsPDF {
     { label: 'Rs. 50', count: data.cashEntry.denom_50, amount: data.cashEntry.denom_50 * 50 },
     { label: 'Rs. 20', count: data.cashEntry.denom_20, amount: data.cashEntry.denom_20 * 20 },
     { label: 'Rs. 10', count: data.cashEntry.denom_10, amount: data.cashEntry.denom_10 * 10 },
-    { label: 'Rs. 5', count: data.cashEntry.denom_5, amount: data.cashEntry.denom_5 * 5 },
-    { label: 'Rs. 2', count: data.cashEntry.denom_2, amount: data.cashEntry.denom_2 * 2 },
-    { label: 'Rs. 1', count: data.cashEntry.denom_1, amount: data.cashEntry.denom_1 * 1 }
+    { label: 'Coins (Total)', count: '-', amount: data.cashEntry.coins || 0 }
   ];
   
   autoTable(doc, {
     startY: yPos,
     head: [['Denomination', 'Count', 'Amount']],
-    body: denominations.map(d => [d.label, d.count.toString(), formatCurrencyPDF(d.amount)]),
+    body: denominations.map(d => [d.label, d.count === '-' ? d.count : d.count.toString(), formatCurrencyPDF(d.amount)]),
     foot: [['TOTAL CASH', '', formatCurrencyPDF(data.cashEntry.total_cash)]],
     headStyles: { 
       fillColor: burgundy, 
@@ -213,9 +211,7 @@ export function generateDailyReportPDF(data: PDFData): jsPDF {
   doc.setTextColor(...darkGray);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Google Pay: ${formatCurrencyPDF(data.cashEntry.google_pay)}`, 14, yPos);
-  yPos += 6;
-  doc.text(`PhonePe/Paytm: ${formatCurrencyPDF(data.cashEntry.phonepe_paytm)}`, 14, yPos);
+  doc.text(`PhonePe/Paytm/UPI: ${formatCurrencyPDF(data.cashEntry.phonepe_paytm)}`, 14, yPos);
   yPos += 6;
   doc.text(`Bank Transfer: ${formatCurrencyPDF(data.cashEntry.bank_transfer)}`, 14, yPos);
   yPos += 6;
@@ -223,6 +219,28 @@ export function generateDailyReportPDF(data: PDFData): jsPDF {
   doc.setFont('helvetica', 'bold');
   doc.text(`Total UPI/Bank: ${formatCurrencyPDF(data.cashEntry.total_upi_bank)}`, 14, yPos);
   yPos += 15;
+  
+  // ===== BANK DEPOSIT & CASH TO HOUSE =====
+  if ((data.cashEntry.bank_deposit && data.cashEntry.bank_deposit > 0) || 
+      (data.cashEntry.cash_to_house && data.cashEntry.cash_to_house > 0)) {
+    doc.setTextColor(...burgundy);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BANK DEPOSIT / CASH TO COUNTER', 14, yPos);
+    yPos += 8;
+    
+    doc.setTextColor(...darkGray);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Bank Deposit (for Stock Purchase): ${formatCurrencyPDF(data.cashEntry.bank_deposit || 0)}`, 14, yPos);
+    yPos += 6;
+    doc.text(`Cash to Owner: ${formatCurrencyPDF(data.cashEntry.cash_to_house || 0)}`, 14, yPos);
+    yPos += 6;
+    
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total: ${formatCurrencyPDF((data.cashEntry.bank_deposit || 0) + (data.cashEntry.cash_to_house || 0))}`, 14, yPos);
+    yPos += 15;
+  }
   
   // ===== EXTRA TRANSACTIONS =====
   if (data.extraTransactions.length > 0) {
@@ -302,7 +320,23 @@ export function generateDailyReportPDF(data: PDFData): jsPDF {
   doc.setTextColor(...darkGray);
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
-  doc.text(`Cash Shortage: ${formatCurrencyPDF(data.cashEntry.cash_shortage)}`, boxX + 10, yPos);
+  
+  // Calculate cash shortage with new formula
+  const totalCash = data.cashEntry.total_cash;
+  const totalSaleValue = data.cashEntry.total_sale_value;
+  const cashShortage = totalSaleValue - totalCash;
+  
+  // Display cash shortage with color coding logic
+  let cashShortageText = '';
+  if (cashShortage === 0) {
+    cashShortageText = 'NO CASH SHORTAGE';
+  } else if (cashShortage < 0) {
+    cashShortageText = `EXCESS CASH: ${formatCurrencyPDF(Math.abs(cashShortage))}`;
+  } else {
+    cashShortageText = `CASH SHORTAGE: ${formatCurrencyPDF(cashShortage)}`;
+  }
+  
+  doc.text(cashShortageText, boxX + 10, yPos);
   yPos += 12;
   doc.text(`Total Bottles Sold: ${data.cashEntry.total_bottles_sold}`, boxX + 10, yPos);
   yPos += 12;
