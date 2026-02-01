@@ -85,7 +85,7 @@ This will create:
 
 1. In Supabase dashboard, go to Authentication > Users
 2. Click "Add user" and create with:
-   - Email: `admin@wineshop.local`
+   - Email: Any valid email (e.g., `admin@gmail.com`, `admin@outlook.com`, or any other email domain)
    - Password: `admin123` (change this!)
 3. Note the User ID
 4. In SQL Editor, run:
@@ -94,6 +94,8 @@ This will create:
 INSERT INTO users (id, username, role, shop_id)
 VALUES ('paste-user-id-here', 'admin', 'admin', NULL);
 ```
+
+**Note:** The system supports any email domain (Gmail, Outlook, Yahoo, etc.). No email validation restrictions are enforced.
 
 ### 6. Run Development Server
 

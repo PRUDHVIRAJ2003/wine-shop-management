@@ -85,7 +85,8 @@ export default function StaffEntryPage() {
     return creditEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
   }, [creditEntries]);
 
-  const totalCash = useMemo(() => {
+  // Physical cash from denominations (NOT including digital payments)
+  const physicalCash = useMemo(() => {
     return (
       (cashEntry.denom_500 || 0) * 500 +
       (cashEntry.denom_200 || 0) * 200 +
@@ -98,9 +99,21 @@ export default function StaffEntryPage() {
   }, [cashEntry.denom_500, cashEntry.denom_200, cashEntry.denom_100, cashEntry.denom_50, 
       cashEntry.denom_20, cashEntry.denom_10, cashEntry.coins]);
 
+  // Digital payments from CashDenomination component (maps to phonepe_paytm field in DB)
+  const digitalPayments = useMemo(() => {
+    return (cashEntry.phonepe_paytm || 0);
+  }, [cashEntry.phonepe_paytm]);
+
+  // Total cash includes both physical cash and digital payments
+  const totalCash = useMemo(() => {
+    return physicalCash + digitalPayments;
+  }, [physicalCash, digitalPayments]);
+
+  // Total UPI/Bank for database field (now only includes digital payments)
+  // Note: bank_transfer field is deprecated but kept in DB for historical data
   const totalUpiBank = useMemo(() => {
-    return (cashEntry.phonepe_paytm || 0) + (cashEntry.bank_transfer || 0);
-  }, [cashEntry.phonepe_paytm, cashEntry.bank_transfer]);
+    return digitalPayments;
+  }, [digitalPayments]);
 
   const totalSaleValue = useMemo(() => {
     return stockEntries.reduce((sum, e) => sum + (e.sale_value || 0), 0);
@@ -110,13 +123,27 @@ export default function StaffEntryPage() {
     return stockEntries.reduce((sum, e) => sum + (e.sold_qty || 0), 0);
   }, [stockEntries]);
 
+  // New business logic: Total Amount calculation
+  const totalAmount = useMemo(() => {
+    return (cashEntry.counter_opening || 0) + totalSaleValue + totalExtraIncome;
+  }, [cashEntry.counter_opening, totalSaleValue, totalExtraIncome]);
+
+  // New business logic: Counter Closing (cash remaining at counter)
   const counterClosing = useMemo(() => {
-    return totalCash + totalUpiBank;
-  }, [totalCash, totalUpiBank]);
+    return totalAmount - digitalPayments - (cashEntry.cash_to_house || 0) - totalExpenses;
+  }, [totalAmount, digitalPayments, cashEntry.cash_to_house, totalExpenses]);
+
+  // New business logic: Cash Shortage/Excess
+  // Compare expected counter_closing with actual cash + credit sales
+  const actualCashAtCounter = physicalCash;
+  const cashDifference = useMemo(() => {
+    return (totalCredit + actualCashAtCounter) - counterClosing;
+  }, [totalCredit, actualCashAtCounter, counterClosing]);
 
   const cashShortage = useMemo(() => {
-    return totalSaleValue - totalCash;
-  }, [totalSaleValue, totalCash]);
+    // Negative difference means shortage
+    return cashDifference < 0 ? Math.abs(cashDifference) : 0;
+  }, [cashDifference]);
 
   // Update cashEntry when computed values change
   useEffect(() => {
@@ -558,46 +585,64 @@ export default function StaffEntryPage() {
     if (!user?.shop_id) return;
     
     try {
-      for (const entry of creditEntries) {
-        if (entry.person_name && entry.amount > 0) {
-          if (entry.id) {
-            // Update existing
-            const { error } = await supabase
-              .from('daily_credit_entries')
-              .update({
-                person_name: entry.person_name,
-                amount: entry.amount,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', entry.id);
-            
-            if (error) throw error;
-          } else {
-            // Insert new
-            const { error } = await supabase
-              .from('daily_credit_entries')
-              .insert({
-                shop_id: user.shop_id,
-                entry_date: selectedDate,
-                person_name: entry.person_name,
-                amount: entry.amount
-              });
-            
-            if (error) throw error;
-          }
-          
-          // Add to debtors table for auto-suggest (upsert)
-          const { error: debtorError } = await supabase
-            .from('debtors')
-            .upsert({
-              shop_id: user.shop_id,
-              person_name: entry.person_name
-            }, {
-              onConflict: 'shop_id,person_name'
-            });
-          
-          if (debtorError) throw debtorError;
-        }
+      const validEntries = creditEntries.filter(entry => entry.person_name && entry.amount > 0);
+      
+      if (validEntries.length === 0) {
+        await loadPreviousDebtors();
+        return;
+      }
+
+      // Separate entries into updates and inserts
+      const updates = validEntries
+        .filter(entry => entry.id)
+        .map(entry => ({
+          id: entry.id,
+          person_name: entry.person_name,
+          amount: entry.amount,
+          updated_at: new Date().toISOString()
+        }));
+
+      const inserts = validEntries
+        .filter(entry => !entry.id)
+        .map(entry => ({
+          shop_id: user.shop_id,
+          entry_date: selectedDate,
+          person_name: entry.person_name,
+          amount: entry.amount
+        }));
+
+      // Batch update existing entries
+      if (updates.length > 0) {
+        const { error } = await supabase
+          .from('daily_credit_entries')
+          .upsert(updates);
+        
+        if (error) throw error;
+      }
+
+      // Batch insert new entries
+      if (inserts.length > 0) {
+        const { error } = await supabase
+          .from('daily_credit_entries')
+          .insert(inserts);
+        
+        if (error) throw error;
+      }
+      
+      // Batch upsert all debtors
+      const debtors = validEntries.map(entry => ({
+        shop_id: user.shop_id,
+        person_name: entry.person_name
+      }));
+
+      if (debtors.length > 0) {
+        const { error: debtorError } = await supabase
+          .from('debtors')
+          .upsert(debtors, {
+            onConflict: 'shop_id,person_name'
+          });
+        
+        if (debtorError) throw debtorError;
       }
       
       // Reload previous debtors to update the list
@@ -612,20 +657,29 @@ export default function StaffEntryPage() {
     if (!cashEntry.id) return;
 
     try {
-      // Save all stock entries
-      for (const entry of stockEntries) {
-        await supabase
+      // Batch save all stock entries using upsert for efficiency
+      const stockUpdates = stockEntries.map(entry => ({
+        id: entry.id,
+        shop_id: entry.shop_id,
+        product_id: entry.product_id,
+        entry_date: entry.entry_date,
+        opening_stock: entry.opening_stock,
+        purchases: entry.purchases,
+        transfer: entry.transfer,
+        closing_stock: entry.closing_stock,
+        sold_qty: entry.sold_qty,
+        sale_value: entry.sale_value,
+        closing_stock_value: entry.closing_stock_value,
+        updated_at: new Date().toISOString(),
+      }));
+
+      // Use upsert for batch operation - single database call
+      if (stockUpdates.length > 0) {
+        const { error: stockError } = await supabase
           .from('daily_stock_entries')
-          .update({
-            opening_stock: entry.opening_stock,
-            purchases: entry.purchases,
-            transfer: entry.transfer,
-            closing_stock: entry.closing_stock,
-            sold_qty: entry.sold_qty,
-            sale_value: entry.sale_value,
-            closing_stock_value: entry.closing_stock_value,
-          })
-          .eq('id', entry.id);
+          .upsert(stockUpdates);
+        
+        if (stockError) throw stockError;
       }
 
       // Save cash entry
@@ -700,43 +754,63 @@ export default function StaffEntryPage() {
         .eq('entry_date', selectedDate);
       
       if (todayStockEntries && todayStockEntries.length > 0) {
-        // For each product, create/update tomorrow's entry with opening stock
+        // Fetch all existing tomorrow's entries in one query
+        const { data: existingEntries } = await supabase
+          .from('daily_stock_entries')
+          .select('id, product_id')
+          .eq('shop_id', user?.shop_id)
+          .eq('entry_date', nextDateStr);
+        
+        // Create a map of existing entries for quick lookup
+        const existingMap = new Map(
+          (existingEntries || []).map(e => [e.product_id, e.id])
+        );
+        
+        // Prepare batch operations
+        const toUpdate: Array<{ id: string; opening_stock: number }> = [];
+        const toInsert: Array<Omit<DailyStockEntry, 'id' | 'created_at' | 'updated_at' | 'product'>> = [];
+        
         for (const entry of todayStockEntries) {
-          // Check if tomorrow's entry exists
-          const { data: existingEntry } = await supabase
-            .from('daily_stock_entries')
-            .select('id')
-            .eq('shop_id', user?.shop_id)
-            .eq('product_id', entry.product_id)
-            .eq('entry_date', nextDateStr)
-            .single();
+          const existingId = existingMap.get(entry.product_id);
           
-          if (existingEntry) {
-            // Update existing entry's opening stock
-            await supabase
-              .from('daily_stock_entries')
-              .update({ 
-                opening_stock: entry.closing_stock 
-              })
-              .eq('id', existingEntry.id);
+          if (existingId) {
+            // Prepare update
+            toUpdate.push({
+              id: existingId,
+              opening_stock: entry.closing_stock
+            });
           } else {
-            // Insert new entry with opening stock from today's closing
-            await supabase
-              .from('daily_stock_entries')
-              .insert({
-                shop_id: user?.shop_id,
-                product_id: entry.product_id,
-                entry_date: nextDateStr,
-                opening_stock: entry.closing_stock,
-                purchases: 0,
-                transfer: 0,
-                closing_stock: entry.closing_stock,
-                sold_qty: 0,
-                sale_value: 0,
-                closing_stock_value: entry.closing_stock_value || 0
-              });
+            // Prepare insert
+            toInsert.push({
+              shop_id: user?.shop_id || '',
+              product_id: entry.product_id,
+              entry_date: nextDateStr,
+              opening_stock: entry.closing_stock,
+              purchases: 0,
+              transfer: 0,
+              closing_stock: entry.closing_stock,
+              sold_qty: 0,
+              sale_value: 0,
+              closing_stock_value: entry.closing_stock_value || 0
+            });
           }
         }
+        
+        // Execute batch operations
+        if (toUpdate.length > 0) {
+          const { error: updateError } = await supabase
+            .from('daily_stock_entries')
+            .upsert(toUpdate);
+          if (updateError) throw updateError;
+        }
+        
+        if (toInsert.length > 0) {
+          const { error: insertError } = await supabase
+            .from('daily_stock_entries')
+            .insert(toInsert);
+          if (insertError) throw insertError;
+        }
+        
         console.log('Stock entries carried forward successfully!');
       }
       
@@ -948,24 +1022,6 @@ export default function StaffEntryPage() {
               />
             </div>
 
-            <Button 
-              variant="secondary" 
-              onClick={async () => {
-                if (user?.shop_id && selectedDate) {
-                  const success = await carryForwardFromPreviousDay(user.shop_id, selectedDate);
-                  if (success) {
-                    alert('✅ Stock and Counter Opening carried forward from previous day!');
-                    await loadData();
-                  } else {
-                    alert('ℹ️ No previous day data found or already carried forward.');
-                  }
-                }
-              }}
-              className="whitespace-nowrap"
-            >
-              🔄 Carry Forward
-            </Button>
-
             <Input
               type="text"
               placeholder="Filter by brand..."
@@ -1036,41 +1092,6 @@ export default function StaffEntryPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Digital Payments</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <label className="text-sm font-medium text-gray-700">PhonePe/Paytm/UPI</label>
-                <Input
-                  type="number"
-                  value={cashEntry.phonepe_paytm === 0 ? '' : cashEntry.phonepe_paytm}
-                  placeholder="0"
-                  onChange={(e) => updateCashDenomination('phonepe_paytm', parseFloat(e.target.value) || 0)}
-                  disabled={cashEntry.is_locked}
-                  step="0.01"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Bank Transfer</label>
-                <Input
-                  type="number"
-                  value={cashEntry.bank_transfer === 0 ? '' : cashEntry.bank_transfer}
-                  placeholder="0"
-                  onChange={(e) => updateCashDenomination('bank_transfer', parseFloat(e.target.value) || 0)}
-                  disabled={cashEntry.is_locked}
-                  step="0.01"
-                />
-              </div>
-              <div className="pt-2 border-t">
-                <div className="flex justify-between text-lg font-bold">
-                  <span>Total UPI/Bank:</span>
-                  <span className="text-secondary">{formatCurrency(totalUpiBank)}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Bank Deposit / Cash to Counter */}
@@ -1122,6 +1143,7 @@ export default function StaffEntryPage() {
             denom_20: cashEntry.denom_20 || 0,
             denom_10: cashEntry.denom_10 || 0,
             coins: cashEntry.coins || 0,
+            digital_payments: cashEntry.phonepe_paytm || 0,
           }}
           onUpdate={updateCashDenomination}
           isLocked={cashEntry.is_locked || false}
@@ -1234,38 +1256,38 @@ export default function StaffEntryPage() {
         <h3 className="text-xl font-bold text-[#722F37] mb-4">Today Trend</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className={`border-2 ${
-            cashShortage === 0 
+            cashDifference === 0 
               ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-300' 
-              : cashShortage < 0 
+              : cashDifference > 0 
                 ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-300' 
                 : 'bg-gradient-to-br from-red-50 to-red-100 border-red-300'
           }`}>
             <CardHeader>
               <CardTitle className={
-                cashShortage === 0 
+                cashDifference === 0 
                   ? 'text-green-700' 
-                  : cashShortage < 0 
+                  : cashDifference > 0 
                     ? 'text-green-700' 
                     : 'text-red-700'
-              }>Cash Shortage</CardTitle>
+              }>Cash Status</CardTitle>
             </CardHeader>
             <CardContent>
               <div className={`text-3xl font-bold ${
-                cashShortage === 0 
+                cashDifference === 0 
                   ? 'text-green-600' 
-                  : cashShortage < 0 
+                  : cashDifference > 0 
                     ? 'text-green-600' 
                     : 'text-red-600'
               }`}>
-                {cashShortage === 0 
-                  ? 'NO CASH SHORTAGE' 
-                  : cashShortage < 0 
-                    ? `EXCESS CASH = ${formatCurrency(Math.abs(cashShortage))}` 
-                    : `CASH SHORTAGE = ${formatCurrency(cashShortage)}`
+                {cashDifference === 0 
+                  ? 'NO EXCESS/SHORTAGE' 
+                  : cashDifference > 0 
+                    ? `EXCESS CASH = ${formatCurrency(cashDifference)}` 
+                    : `CASH SHORTAGE = ${formatCurrency(Math.abs(cashDifference))}`
                 }
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                Total Sale Value ({formatCurrency(totalSaleValue)}) - Total Cash ({formatCurrency(totalCash)})
+                (Credit {formatCurrency(totalCredit)} + Physical Cash {formatCurrency(physicalCash)}) - Expected Counter Closing ({formatCurrency(counterClosing)})
               </p>
             </CardContent>
           </Card>

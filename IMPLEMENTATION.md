@@ -220,6 +220,8 @@ After setup, use:
 - Username: `admin`
 - Password: `admin123` (change immediately!)
 
+**Note:** The system accepts any valid email domain (Gmail, Outlook, Yahoo, etc.) during user creation. No restrictions on email format or domain are enforced.
+
 ## ✨ Production Ready
 
 The system is **100% complete** and ready for deployment. All features from the requirements have been implemented, tested for build success, and documented thoroughly.
