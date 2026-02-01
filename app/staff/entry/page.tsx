@@ -187,12 +187,14 @@ export default function StaffEntryPage() {
   };
 
   const loadPreviousDebtors = async () => {
-    if (!user?.shop_id) return;
+    // Capture shop_id at the start and validate
+    const shopId = user?.shop_id;
+    if (!shopId) return;
     
     const { data } = await supabase
       .from('debtors')
       .select('person_name')
-      .eq('shop_id', user.shop_id)
+      .eq('shop_id', shopId)
       .order('person_name');
     
     if (data) {
@@ -201,13 +203,15 @@ export default function StaffEntryPage() {
   };
 
   const loadCreditEntries = async () => {
-    if (!user?.shop_id) return;
+    // Capture shop_id at the start and validate
+    const shopId = user?.shop_id;
+    if (!shopId) return;
     
     try {
       const { data, error } = await supabase
         .from('daily_credit_entries')
         .select('*')
-        .eq('shop_id', user.shop_id)
+        .eq('shop_id', shopId)
         .eq('entry_date', selectedDate)
         .order('created_at');
       
@@ -383,7 +387,9 @@ export default function StaffEntryPage() {
   };
 
   const loadData = async () => {
-    if (!user?.shop_id) return;
+    // Capture shop_id at the start and validate
+    const shopId = user?.shop_id;
+    if (!shopId) return;
 
     // Load products for this shop
     const { data: productsData } = await supabase
@@ -393,7 +399,7 @@ export default function StaffEntryPage() {
         product_type:product_types(*),
         product_size:product_sizes(*)
       `)
-      .eq('shop_id', user.shop_id)
+      .eq('shop_id', shopId)
       .eq('is_active', true)
       .order('brand_name');
 
@@ -411,7 +417,9 @@ export default function StaffEntryPage() {
   };
 
   const loadStockEntries = async (prods: Product[]) => {
-    if (!user?.shop_id) return;
+    // Capture shop_id at the start and validate
+    const shopId = user?.shop_id;
+    if (!shopId) return;
 
     const { data: existingEntries } = await supabase
       .from('daily_stock_entries')
@@ -423,7 +431,7 @@ export default function StaffEntryPage() {
           product_size:product_sizes(*)
         )
       `)
-      .eq('shop_id', user.shop_id)
+      .eq('shop_id', shopId)
       .eq('entry_date', selectedDate);
 
     if (existingEntries && existingEntries.length > 0) {
@@ -435,7 +443,7 @@ export default function StaffEntryPage() {
       const { data: yesterdayEntries } = await supabase
         .from('daily_stock_entries')
         .select('product_id, closing_stock')
-        .eq('shop_id', user.shop_id)
+        .eq('shop_id', shopId)
         .eq('entry_date', yesterday);
 
       const yesterdayMap = new Map(yesterdayEntries?.map(e => [e.product_id, e.closing_stock]) || []);
@@ -447,7 +455,7 @@ export default function StaffEntryPage() {
           const { data: newEntry } = await supabase
             .from('daily_stock_entries')
             .insert({
-              shop_id: user.shop_id,
+              shop_id: shopId,
               product_id: product.id,
               entry_date: selectedDate,
               opening_stock,
@@ -477,12 +485,14 @@ export default function StaffEntryPage() {
   };
 
   const loadCashEntry = async () => {
-    if (!user?.shop_id) return;
+    // Capture shop_id at the start and validate
+    const shopId = user?.shop_id;
+    if (!shopId) return;
 
     const { data: existingCash } = await supabase
       .from('daily_cash_entries')
       .select('*')
-      .eq('shop_id', user.shop_id)
+      .eq('shop_id', shopId)
       .eq('entry_date', selectedDate)
       .single();
 
@@ -504,7 +514,7 @@ export default function StaffEntryPage() {
       const { data: yesterdayCash } = await supabase
         .from('daily_cash_entries')
         .select('counter_closing')
-        .eq('shop_id', user.shop_id)
+        .eq('shop_id', shopId)
         .eq('entry_date', yesterday)
         .single();
 
@@ -514,7 +524,7 @@ export default function StaffEntryPage() {
       const { data: newCash } = await supabase
         .from('daily_cash_entries')
         .insert({
-          shop_id: user.shop_id,
+          shop_id: shopId,
           entry_date: selectedDate,
           counter_opening,
         })
@@ -600,7 +610,9 @@ export default function StaffEntryPage() {
   };
 
   const saveCreditEntries = async () => {
-    if (!user?.shop_id) return;
+    // Capture shop_id at the start and validate
+    const shopId = user?.shop_id;
+    if (!shopId) return;
     
     try {
       const validEntries = creditEntries.filter(entry => entry.person_name && entry.amount > 0);
@@ -623,7 +635,7 @@ export default function StaffEntryPage() {
       const inserts = validEntries
         .filter(entry => !entry.id)
         .map(entry => ({
-          shop_id: user.shop_id,
+          shop_id: shopId,
           entry_date: selectedDate,
           person_name: entry.person_name,
           amount: entry.amount
@@ -649,7 +661,7 @@ export default function StaffEntryPage() {
       
       // Batch upsert all debtors
       const debtors = validEntries.map(entry => ({
-        shop_id: user.shop_id,
+        shop_id: shopId,
         person_name: entry.person_name
       }));
 
@@ -744,8 +756,9 @@ export default function StaffEntryPage() {
   };
 
   const handleLockAndSend = async () => {
-    // Guard clauses at the VERY START
-    if (!user?.shop_id) {
+    // Capture shop_id at the very start and validate
+    const shopId = user?.shop_id;
+    if (!shopId) {
       alert('❌ Shop ID not found. Please log out and log in again.');
       return;
     }
@@ -778,11 +791,6 @@ export default function StaffEntryPage() {
       // ACTION 2: Carry forward to NEXT day
       // ============================================
       
-      // Guard clause: Ensure shop_id exists before proceeding
-      if (!user?.shop_id) {
-        throw new Error('Shop ID is required to carry forward stock entries');
-      }
-      
       const currentDate = new Date(selectedDate);
       const nextDate = new Date(currentDate);
       nextDate.setDate(nextDate.getDate() + 1);
@@ -794,7 +802,7 @@ export default function StaffEntryPage() {
       const { data: todayStockEntries } = await supabase
         .from('daily_stock_entries')
         .select('product_id, closing_stock, closing_stock_value')
-        .eq('shop_id', user.shop_id)
+        .eq('shop_id', shopId)
         .eq('entry_date', selectedDate);
       
       if (todayStockEntries && todayStockEntries.length > 0) {
@@ -802,7 +810,7 @@ export default function StaffEntryPage() {
         const { data: existingEntries } = await supabase
           .from('daily_stock_entries')
           .select('id, product_id')
-          .eq('shop_id', user.shop_id)
+          .eq('shop_id', shopId)
           .eq('entry_date', nextDateStr);
         
         // Create a map of existing entries for quick lookup
@@ -826,7 +834,7 @@ export default function StaffEntryPage() {
           } else {
             // Prepare insert - shop_id is validated above, safe to use
             toInsert.push({
-              shop_id: user.shop_id,
+              shop_id: shopId,
               product_id: entry.product_id,
               entry_date: nextDateStr,
               opening_stock: entry.closing_stock,
@@ -862,7 +870,7 @@ export default function StaffEntryPage() {
       const { data: todayCashEntry } = await supabase
         .from('daily_cash_entries')
         .select('counter_closing')
-        .eq('shop_id', user.shop_id)
+        .eq('shop_id', shopId)
         .eq('entry_date', selectedDate)
         .single();
       
@@ -871,7 +879,7 @@ export default function StaffEntryPage() {
         const { data: existingCashEntry } = await supabase
           .from('daily_cash_entries')
           .select('id')
-          .eq('shop_id', user.shop_id)
+          .eq('shop_id', shopId)
           .eq('entry_date', nextDateStr)
           .single();
         
@@ -888,7 +896,7 @@ export default function StaffEntryPage() {
           await supabase
             .from('daily_cash_entries')
             .insert({
-              shop_id: user.shop_id,
+              shop_id: shopId,
               entry_date: nextDateStr,
               counter_opening: todayCashEntry.counter_closing,
               denom_500: 0,
@@ -920,7 +928,7 @@ export default function StaffEntryPage() {
           is_locked: true, 
           locked_at: new Date().toISOString() 
         })
-        .eq('shop_id', user.shop_id)
+        .eq('shop_id', shopId)
         .eq('entry_date', selectedDate);
       
       if (lockError) throw lockError;
@@ -929,7 +937,7 @@ export default function StaffEntryPage() {
       const { error: approvalError } = await supabase
         .from('approval_requests')
         .insert({
-          shop_id: user.shop_id,
+          shop_id: shopId,
           entry_date: selectedDate,
           request_type: 'lock',
           requested_by: user?.id,

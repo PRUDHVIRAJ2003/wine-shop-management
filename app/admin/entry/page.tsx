@@ -215,12 +215,14 @@ export default function AdminEntryPage() {
   };
 
   const loadPreviousDebtors = async () => {
-    if (!selectedShop) return;
+    // Capture selectedShop at the start and validate
+    const shopId = selectedShop;
+    if (!shopId) return;
     
     const { data } = await supabase
       .from('debtors')
       .select('person_name')
-      .eq('shop_id', selectedShop)
+      .eq('shop_id', shopId)
       .order('person_name');
     
     if (data) {
@@ -229,13 +231,15 @@ export default function AdminEntryPage() {
   };
 
   const loadCreditEntries = async () => {
-    if (!selectedShop) return;
+    // Capture selectedShop at the start and validate
+    const shopId = selectedShop;
+    if (!shopId) return;
     
     try {
       const { data, error } = await supabase
         .from('daily_credit_entries')
         .select('*')
-        .eq('shop_id', selectedShop)
+        .eq('shop_id', shopId)
         .eq('entry_date', selectedDate)
         .order('created_at');
       
@@ -419,7 +423,9 @@ export default function AdminEntryPage() {
   };
 
   const loadData = async () => {
-    if (!selectedShop) return;
+    // Capture selectedShop at the start and validate
+    const shopId = selectedShop;
+    if (!shopId) return;
 
     // Load stock entries
     const { data: stockData } = await supabase
@@ -432,7 +438,7 @@ export default function AdminEntryPage() {
           product_size:product_sizes(*)
         )
       `)
-      .eq('shop_id', selectedShop)
+      .eq('shop_id', shopId)
       .eq('entry_date', selectedDate);
 
     if (stockData) {
@@ -443,7 +449,7 @@ export default function AdminEntryPage() {
     const { data: cashData } = await supabase
       .from('daily_cash_entries')
       .select('*')
-      .eq('shop_id', selectedShop)
+      .eq('shop_id', shopId)
       .eq('entry_date', selectedDate)
       .single();
 
@@ -534,7 +540,9 @@ export default function AdminEntryPage() {
   };
 
   const saveCreditEntries = async () => {
-    if (!selectedShop) return;
+    // Capture selectedShop at the start and validate
+    const shopId = selectedShop;
+    if (!shopId) return;
     
     try {
       const validEntries = creditEntries.filter(entry => entry.person_name && entry.amount > 0);
@@ -557,7 +565,7 @@ export default function AdminEntryPage() {
       const inserts = validEntries
         .filter(entry => !entry.id)
         .map(entry => ({
-          shop_id: selectedShop,
+          shop_id: shopId,
           entry_date: selectedDate,
           person_name: entry.person_name,
           amount: entry.amount
@@ -583,7 +591,7 @@ export default function AdminEntryPage() {
       
       // Batch upsert all debtors
       const debtors = validEntries.map(entry => ({
-        shop_id: selectedShop,
+        shop_id: shopId,
         person_name: entry.person_name
       }));
 
@@ -674,8 +682,9 @@ export default function AdminEntryPage() {
   };
 
   const handleApproveAndLock = async () => {
-    // Guard clause: Ensure shop is selected
-    if (!selectedShop) {
+    // Capture selectedShop at the very start and validate
+    const shopId = selectedShop;
+    if (!shopId) {
       alert('❌ Please select a shop first');
       return;
     }
@@ -706,11 +715,6 @@ export default function AdminEntryPage() {
       // ACTION 2: Carry forward to NEXT day
       // ============================================
       
-      // Guard clause: Ensure shop is selected before proceeding
-      if (!selectedShop) {
-        throw new Error('Shop selection is required to carry forward stock entries');
-      }
-      
       const currentDate = new Date(selectedDate);
       const nextDate = new Date(currentDate);
       nextDate.setDate(nextDate.getDate() + 1);
@@ -722,7 +726,7 @@ export default function AdminEntryPage() {
       const { data: todayStockEntries } = await supabase
         .from('daily_stock_entries')
         .select('product_id, closing_stock, closing_stock_value')
-        .eq('shop_id', selectedShop)
+        .eq('shop_id', shopId)
         .eq('entry_date', selectedDate);
       
       if (todayStockEntries && todayStockEntries.length > 0) {
@@ -730,7 +734,7 @@ export default function AdminEntryPage() {
         const { data: existingEntries } = await supabase
           .from('daily_stock_entries')
           .select('id, product_id')
-          .eq('shop_id', selectedShop)
+          .eq('shop_id', shopId)
           .eq('entry_date', nextDateStr);
         
         // Create a map of existing entries for quick lookup
@@ -754,7 +758,7 @@ export default function AdminEntryPage() {
           } else {
             // Prepare insert
             toInsert.push({
-              shop_id: selectedShop,
+              shop_id: shopId,
               product_id: entry.product_id,
               entry_date: nextDateStr,
               opening_stock: entry.closing_stock,
@@ -790,7 +794,7 @@ export default function AdminEntryPage() {
       const { data: todayCashEntry } = await supabase
         .from('daily_cash_entries')
         .select('counter_closing')
-        .eq('shop_id', selectedShop)
+        .eq('shop_id', shopId)
         .eq('entry_date', selectedDate)
         .single();
       
@@ -799,7 +803,7 @@ export default function AdminEntryPage() {
         const { data: existingCashEntry } = await supabase
           .from('daily_cash_entries')
           .select('id')
-          .eq('shop_id', selectedShop)
+          .eq('shop_id', shopId)
           .eq('entry_date', nextDateStr)
           .single();
         
@@ -816,7 +820,7 @@ export default function AdminEntryPage() {
           await supabase
             .from('daily_cash_entries')
             .insert({
-              shop_id: selectedShop,
+              shop_id: shopId,
               entry_date: nextDateStr,
               counter_opening: todayCashEntry.counter_closing,
               denom_500: 0,
