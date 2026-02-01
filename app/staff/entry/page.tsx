@@ -223,8 +223,8 @@ export default function StaffEntryPage() {
       } else {
         setCreditEntries([]);
       }
-    } catch {
-      console.warn('Credit entries not available');
+    } catch (error: any) {
+      console.warn('Credit entries not available:', error?.message || error);
       setCreditEntries([]);
     }
   };

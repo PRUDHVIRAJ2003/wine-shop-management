@@ -251,8 +251,8 @@ export default function AdminEntryPage() {
       } else {
         setCreditEntries([]);
       }
-    } catch {
-      console.warn('Credit entries not available');
+    } catch (error: any) {
+      console.warn('Credit entries not available:', error?.message || error);
       setCreditEntries([]);
     }
   };
@@ -681,7 +681,7 @@ export default function AdminEntryPage() {
     }
     
     if (!cashEntry.id) {
-      alert('❌ No cash entry found. Please refresh and try again.');
+      alert('❌ Cash entry not loaded. Please refresh and try again.');
       return;
     }
 
