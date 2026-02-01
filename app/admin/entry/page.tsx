@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { User, Shop, DailyStockEntry, DailyCashEntry, Product, ExtraTransaction, CreditEntry } from '@/types';
@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { Calendar, FileDown, Lock, Unlock } from 'lucide-react';
+import { Calendar, FileDown, Lock, Unlock, RefreshCw } from 'lucide-react';
 import { formatCurrency, getTodayDate } from '@/lib/utils';
 import { generateDailyReportPDF, downloadPDF } from '@/lib/pdf-generator';
 
@@ -27,6 +27,7 @@ export default function AdminEntryPage() {
   const [selectedShop, setSelectedShop] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
   
   // Filter states
   const [brandFilter, setBrandFilter] = useState<string>('');
@@ -162,12 +163,21 @@ export default function AdminEntryPage() {
     checkAuth();
   }, []);
 
+  // Initial load when user first becomes available
   useEffect(() => {
-    if (user && selectedShop) {
-      initializeData();
-      loadPreviousDebtors();
+    if (user && selectedShop && selectedDate) {
+      setDataLoading(true);
+      initializeData().finally(() => setDataLoading(false));
     }
-  }, [user, selectedShop, selectedDate]);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  
+  // Re-fetch when shop or date changes (after user is loaded)
+  useEffect(() => {
+    if (user && selectedShop && selectedDate) {
+      setDataLoading(true);
+      initializeData().finally(() => setDataLoading(false));
+    }
+  }, [selectedShop, selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initializeData = async () => {
     if (!selectedShop) return;
@@ -180,6 +190,19 @@ export default function AdminEntryPage() {
     
     // Load credit entries
     await loadCreditEntries();
+    await loadPreviousDebtors();
+  };
+
+  const handleRefresh = async () => {
+    if (!selectedShop || !selectedDate) return;
+    setDataLoading(true);
+    try {
+      await loadData();
+      await loadCreditEntries();
+      await loadPreviousDebtors();
+    } finally {
+      setDataLoading(false);
+    }
   };
 
   const loadPreviousDebtors = async () => {
@@ -444,9 +467,11 @@ export default function AdminEntryPage() {
   };
 
   const updateCashDenomination = (field: string, value: number) => {
+    // Map 'digital_payments' from UI to 'phonepe_paytm' in database
+    const dbField = field === 'digital_payments' ? 'phonepe_paytm' : field;
     setCashEntry(prev => ({
       ...prev,
-      [field]: value,
+      [dbField]: value,
     }));
   };
 
@@ -939,6 +964,16 @@ export default function AdminEntryPage() {
 
               <Button 
                 variant="secondary" 
+                onClick={handleRefresh}
+                disabled={dataLoading}
+                className="whitespace-nowrap"
+              >
+                <RefreshCw size={16} className={`mr-2 ${dataLoading ? 'animate-spin' : ''}`} />
+                {dataLoading ? 'Refreshing...' : 'Refresh Data'}
+              </Button>
+
+              <Button 
+                variant="secondary" 
                 onClick={async () => {
                   if (selectedShop && selectedDate) {
                     const success = await carryForwardFromPreviousDay(selectedShop, selectedDate);
@@ -957,6 +992,14 @@ export default function AdminEntryPage() {
             </div>
           </div>
         </div>
+
+        {/* Data Loading Indicator */}
+        {dataLoading && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 flex items-center">
+            <RefreshCw size={20} className="animate-spin text-blue-600 mr-3" />
+            <span className="text-blue-700 font-medium">Loading data...</span>
+          </div>
+        )}
 
         {/* Filter Section */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -1289,13 +1332,17 @@ export default function AdminEntryPage() {
             <FileDown size={20} className="mr-2" />
             Generate PDF
           </Button>
-          {!cashEntry.is_locked && (
+          {/* Show Approve & Lock when:
+              - Entry is not locked, OR
+              - Entry is locked but not yet approved (pending approval from staff) */}
+          {(!cashEntry.is_locked || (cashEntry.is_locked && !cashEntry.is_approved)) && (
             <Button onClick={handleApproveAndLock} size="lg">
               <Lock size={20} className="mr-2" />
               Approve & Lock
             </Button>
           )}
-          {cashEntry.is_locked && (
+          {/* Show Unlock only when entry is both locked AND approved */}
+          {cashEntry.is_locked && cashEntry.is_approved && (
             <Button variant="destructive" onClick={handleUnlock} size="lg">
               <Unlock size={20} className="mr-2" />
               Unlock
