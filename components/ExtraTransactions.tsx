@@ -2,7 +2,6 @@
 
 import { ExtraTransaction } from '@/types';
 import { Button } from './ui/Button';
-import { Trash2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 
 interface ExtraTransactionsProps {
