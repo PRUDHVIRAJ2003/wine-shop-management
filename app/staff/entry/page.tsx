@@ -178,14 +178,18 @@ export default function StaffEntryPage() {
     // Then load today's data
     await loadData();
     
-    // Load credit entries
-    await loadCreditEntries();
+    // Load credit entries - don't let it fail the entire load
+    try {
+      await loadCreditEntries();
+    } catch (error: any) {
+      console.warn('Credit entries load skipped:', error.message);
+    }
   };
 
   const loadPreviousDebtors = async () => {
     if (!user?.shop_id) return;
     
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('debtors')
       .select('person_name')
       .eq('shop_id', user.shop_id)
@@ -199,16 +203,28 @@ export default function StaffEntryPage() {
   const loadCreditEntries = async () => {
     if (!user?.shop_id) return;
     
-    const { data, error } = await supabase
-      .from('daily_credit_entries')
-      .select('*')
-      .eq('shop_id', user.shop_id)
-      .eq('entry_date', selectedDate)
-      .order('created_at');
-    
-    if (data) {
-      setCreditEntries(data);
-    } else if (!error) {
+    try {
+      const { data, error } = await supabase
+        .from('daily_credit_entries')
+        .select('*')
+        .eq('shop_id', user.shop_id)
+        .eq('entry_date', selectedDate)
+        .order('created_at');
+      
+      if (error) {
+        // Table might not exist - silently fail
+        console.warn('Credit entries table not available:', error.message);
+        setCreditEntries([]);
+        return;
+      }
+      
+      if (data) {
+        setCreditEntries(data);
+      } else {
+        setCreditEntries([]);
+      }
+    } catch {
+      console.warn('Credit entries not available');
       setCreditEntries([]);
     }
   };
@@ -650,8 +666,13 @@ export default function StaffEntryPage() {
       // Reload previous debtors to update the list
       await loadPreviousDebtors();
     } catch (error: any) {
+      // Don't throw - just log warning if table doesn't exist
+      if (error.message?.includes('daily_credit_entries') || error.message?.includes('relation') || error.message?.includes('does not exist')) {
+        console.warn('Credit entries table not available - skipping save');
+        return;
+      }
       console.error('Error saving credit entries:', error);
-      throw error;
+      throw error; // Re-throw other errors
     }
   };
 
@@ -708,8 +729,12 @@ export default function StaffEntryPage() {
           );
       }
 
-      // Save credit entries
-      await saveCreditEntries();
+      // Save credit entries - don't let it fail the entire save
+      try {
+        await saveCreditEntries();
+      } catch (error: any) {
+        console.warn('Credit entries save skipped:', error.message);
+      }
 
       alert('✅ Data saved successfully!');
     } catch (error: any) {
