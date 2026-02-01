@@ -538,9 +538,11 @@ export default function StaffEntryPage() {
   };
 
   const updateCashDenomination = (field: string, value: number) => {
+    // Map 'digital_payments' from UI to 'phonepe_paytm' in database
+    const dbField = field === 'digital_payments' ? 'phonepe_paytm' : field;
     setCashEntry(prev => ({
       ...prev,
-      [field]: value,
+      [dbField]: value,
     }));
   };
 

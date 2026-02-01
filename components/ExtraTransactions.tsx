@@ -2,9 +2,7 @@
 
 import { ExtraTransaction } from '@/types';
 import { Button } from './ui/Button';
-import { Input } from './ui/Input';
-import { Select } from './ui/Select';
-import { Trash2, Plus } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 
 interface ExtraTransactionsProps {
@@ -30,92 +28,121 @@ export default function ExtraTransactions({
     .filter((t) => t.transaction_type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0);
 
+  const netTotal = totalIncome - totalExpense;
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold text-primary">Extra Transactions</h3>
+        <h3 className="text-lg font-semibold text-[#722F37]">
+          💰 Extra Income / Expenses
+        </h3>
         <Button
           onClick={onAdd}
           disabled={isLocked}
+          variant="secondary"
           size="sm"
-          className="flex items-center space-x-1"
         >
-          <Plus size={16} />
-          <span>Add</span>
+          + Add
         </Button>
       </div>
-
-      <div className="space-y-3">
-        {transactions.map((transaction, index) => (
-          <div key={index} className="grid grid-cols-12 gap-3 items-center">
-            {/* Type dropdown - 3 columns */}
-            <div className="col-span-3">
-              <Select
-                value={transaction.transaction_type}
-                onChange={(e) => onUpdate(index, 'transaction_type', e.target.value)}
-                disabled={isLocked}
-              >
-                <option value="income">(+) Income</option>
-                <option value="expense">(-) Expense</option>
-              </Select>
-            </div>
-
-            {/* Description - 6 columns (BIGGER) */}
-            <div className="col-span-6">
-              <Input
-                type="text"
-                value={transaction.description}
-                onChange={(e) => onUpdate(index, 'description', e.target.value)}
-                placeholder="Enter description..."
-                disabled={isLocked}
-                className="w-full"
-              />
-            </div>
-
-            {/* Amount - 2 columns */}
-            <div className="col-span-2">
-              <Input
-                type="number"
-                value={transaction.amount === 0 ? '' : transaction.amount}
-                placeholder="0"
-                onChange={(e) => onUpdate(index, 'amount', parseFloat(e.target.value) || 0)}
-                disabled={isLocked}
-                min="0"
-                step="0.01"
-              />
-            </div>
-
-            {/* Delete button - 1 column */}
-            <div className="col-span-1">
-              <Button
-                variant="destructive"
-                size="icon"
-                onClick={() => onDelete(index)}
-                disabled={isLocked}
-              >
-                <Trash2 size={16} />
-              </Button>
-            </div>
-          </div>
-        ))}
-
-        {transactions.length === 0 && (
-          <div className="text-center py-4 text-gray-500">
-            No extra transactions added
-          </div>
-        )}
-      </div>
-
-      <div className="mt-4 pt-4 border-t space-y-2">
-        <div className="flex justify-between items-center text-green-600">
-          <span className="font-medium">Total Extra Income:</span>
-          <span className="font-bold">{formatCurrency(totalIncome)}</span>
+      
+      <p className="text-sm text-gray-500 mb-4">
+        Additional income or expense transactions for the day
+      </p>
+      
+      {transactions.length === 0 ? (
+        <p className="text-gray-400 text-center py-4">No extra transactions added</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-[#722F37] text-white">
+              <tr>
+                <th className="px-4 py-2 text-left w-16">S.No</th>
+                <th className="px-4 py-2 text-left w-32">Type</th>
+                <th className="px-4 py-2 text-left">Description</th>
+                <th className="px-4 py-2 text-right w-32">Amount (₹)</th>
+                <th className="px-4 py-2 text-center w-20">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.map((transaction, index) => (
+                <tr key={index} className="border-b hover:bg-gray-50">
+                  <td className="px-4 py-2">{index + 1}</td>
+                  <td className="px-4 py-2">
+                    <select
+                      value={transaction.transaction_type}
+                      onChange={(e) => onUpdate(index, 'transaction_type', e.target.value)}
+                      disabled={isLocked}
+                      className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#722F37]"
+                    >
+                      <option value="income">Income</option>
+                      <option value="expense">Expense</option>
+                    </select>
+                  </td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="text"
+                      value={transaction.description}
+                      onChange={(e) => onUpdate(index, 'description', e.target.value)}
+                      placeholder="Enter description..."
+                      disabled={isLocked}
+                      className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#722F37]"
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="number"
+                      value={transaction.amount || ''}
+                      onChange={(e) => onUpdate(index, 'amount', parseFloat(e.target.value) || 0)}
+                      placeholder="0"
+                      disabled={isLocked}
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-right focus:outline-none focus:ring-2 focus:ring-[#722F37]"
+                      step="0.01"
+                    />
+                  </td>
+                  <td className="px-4 py-2 text-center">
+                    <button
+                      onClick={() => onDelete(index)}
+                      disabled={isLocked}
+                      className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Delete"
+                    >
+                      🗑️
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              
+              {/* Total Income Row */}
+              <tr className="bg-green-50 font-bold">
+                <td className="px-4 py-3" colSpan={3}>TOTAL INCOME:</td>
+                <td className="px-4 py-3 text-right text-green-700">
+                  {formatCurrency(totalIncome)}
+                </td>
+                <td></td>
+              </tr>
+              
+              {/* Total Expenses Row */}
+              <tr className="bg-red-50 font-bold">
+                <td className="px-4 py-3" colSpan={3}>TOTAL EXPENSES:</td>
+                <td className="px-4 py-3 text-right text-red-700">
+                  {formatCurrency(totalExpense)}
+                </td>
+                <td></td>
+              </tr>
+              
+              {/* Net Total Row */}
+              <tr className={`font-bold ${netTotal >= 0 ? 'bg-blue-50' : 'bg-orange-50'}`}>
+                <td className="px-4 py-3" colSpan={3}>NET (Income - Expenses):</td>
+                <td className={`px-4 py-3 text-right ${netTotal >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>
+                  {formatCurrency(netTotal)}
+                </td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div className="flex justify-between items-center text-red-600">
-          <span className="font-medium">Total Expenses:</span>
-          <span className="font-bold">{formatCurrency(totalExpense)}</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
