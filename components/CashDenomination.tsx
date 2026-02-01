@@ -27,6 +27,7 @@ export default function CashDenomination({ denominations, onUpdate, isLocked }: 
     { label: '₹20', field: 'denom_20', value: 20 },
     { label: '₹10', field: 'denom_10', value: 10 },
     { label: 'Coins', field: 'coins', value: 1, isAmount: true },
+    // Note: 'digital_payments' in UI maps to 'phonepe_paytm' field in database for backward compatibility
     { label: 'PhonePe/GPay/Paytm/Other Digital', field: 'digital_payments', value: 1, isAmount: true },
   ];
 

@@ -99,7 +99,7 @@ export default function AdminEntryPage() {
   }, [cashEntry.denom_500, cashEntry.denom_200, cashEntry.denom_100, cashEntry.denom_50, 
       cashEntry.denom_20, cashEntry.denom_10, cashEntry.coins]);
 
-  // Digital payments from CashDenomination component
+  // Digital payments from CashDenomination component (maps to phonepe_paytm field in DB)
   const digitalPayments = useMemo(() => {
     return (cashEntry.phonepe_paytm || 0);
   }, [cashEntry.phonepe_paytm]);
@@ -109,10 +109,11 @@ export default function AdminEntryPage() {
     return physicalCash + digitalPayments;
   }, [physicalCash, digitalPayments]);
 
-  // Keep totalUpiBank for backward compatibility (now includes phonepe_paytm and bank_transfer)
+  // Total UPI/Bank for database field (now only includes digital payments)
+  // Note: bank_transfer field is deprecated but kept in DB for historical data
   const totalUpiBank = useMemo(() => {
-    return (cashEntry.phonepe_paytm || 0) + (cashEntry.bank_transfer || 0);
-  }, [cashEntry.phonepe_paytm, cashEntry.bank_transfer]);
+    return digitalPayments;
+  }, [digitalPayments]);
 
   const totalSaleValue = useMemo(() => {
     return stockEntries.reduce((sum, e) => sum + (e.sale_value || 0), 0);
@@ -668,8 +669,8 @@ export default function AdminEntryPage() {
         );
         
         // Prepare batch operations
-        const toUpdate: any[] = [];
-        const toInsert: any[] = [];
+        const toUpdate: Array<{ id: string; opening_stock: number }> = [];
+        const toInsert: Array<Omit<DailyStockEntry, 'id' | 'created_at' | 'updated_at' | 'product'>> = [];
         
         for (const entry of todayStockEntries) {
           const existingId = existingMap.get(entry.product_id);
