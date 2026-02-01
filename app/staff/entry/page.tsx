@@ -457,12 +457,20 @@ export default function StaffEntryPage() {
       const newEntries = await Promise.all(
         prods.map(async (product) => {
           try {
+            // Final validation before each insert - prevent race conditions
+            // Re-capture user?.shop_id to ensure we have the latest value
+            const currentShopId = user?.shop_id;
+            if (!currentShopId) {
+              console.warn('[loadStockEntries] shopId null at insert time, skipping');
+              return null;
+            }
+            
             const opening_stock = yesterdayMap.get(product.id) || 0;
             
             const { data: newEntry, error } = await supabase
               .from('daily_stock_entries')
               .insert({
-                shop_id: shopId,
+                shop_id: currentShopId,
                 product_id: product.id,
                 entry_date: selectedDate,
                 opening_stock,
@@ -546,11 +554,19 @@ export default function StaffEntryPage() {
       const counter_opening = yesterdayCash?.counter_closing || 0;
       
       try {
+        // Final validation before insert - prevent race conditions
+        // Re-capture user?.shop_id to ensure we have the latest value
+        const currentShopId = user?.shop_id;
+        if (!currentShopId) {
+          console.warn('[loadCashEntry] shopId became null during async, skipping insert');
+          return;
+        }
+        
         // Create new cash entry
         const { data: newCash, error } = await supabase
           .from('daily_cash_entries')
           .insert({
-            shop_id: shopId,
+            shop_id: currentShopId,
             entry_date: selectedDate,
             counter_opening,
           })
