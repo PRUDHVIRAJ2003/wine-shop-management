@@ -903,13 +903,16 @@ export default function AdminEntryPage() {
         .eq('id', cashEntry.id);
 
       // Update local state instead of reloading - prevents race conditions
-      setCashEntry(prev => ({
-        ...prev,
-        is_locked: false,
-        is_approved: false,
-        unlock_requested: false,
-        approved_at: null,
-      }));
+      setCashEntry(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          is_locked: false,
+          is_approved: false,
+          unlock_requested: false,
+          approved_at: null,
+        };
+      });
       alert('✅ Entry unlocked successfully!');
     } catch (error: any) {
       alert('❌ Error: ' + error.message);

@@ -458,8 +458,9 @@ export default function StaffEntryPage() {
         prods.map(async (product) => {
           try {
             // Final validation before each insert - prevent race conditions
-            const insertShopId = user?.shop_id;
-            if (!insertShopId) {
+            // Re-capture user?.shop_id to ensure we have the latest value
+            const currentShopId = user?.shop_id;
+            if (!currentShopId) {
               console.warn('[loadStockEntries] shopId null at insert time, skipping');
               return null;
             }
@@ -469,7 +470,7 @@ export default function StaffEntryPage() {
             const { data: newEntry, error } = await supabase
               .from('daily_stock_entries')
               .insert({
-                shop_id: insertShopId,
+                shop_id: currentShopId,
                 product_id: product.id,
                 entry_date: selectedDate,
                 opening_stock,
@@ -554,8 +555,9 @@ export default function StaffEntryPage() {
       
       try {
         // Final validation before insert - prevent race conditions
-        const insertShopId = user?.shop_id;
-        if (!insertShopId) {
+        // Re-capture user?.shop_id to ensure we have the latest value
+        const currentShopId = user?.shop_id;
+        if (!currentShopId) {
           console.warn('[loadCashEntry] shopId became null during async, skipping insert');
           return;
         }
@@ -564,7 +566,7 @@ export default function StaffEntryPage() {
         const { data: newCash, error } = await supabase
           .from('daily_cash_entries')
           .insert({
-            shop_id: insertShopId,
+            shop_id: currentShopId,
             entry_date: selectedDate,
             counter_opening,
           })
