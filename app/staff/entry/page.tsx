@@ -900,10 +900,21 @@ export default function StaffEntryPage() {
         
         // Execute batch operations
         if (toUpdate.length > 0) {
-          const { error: updateError } = await supabase
-            .from('daily_stock_entries')
-            .upsert(toUpdate);
-          if (updateError) throw updateError;
+          // Use individual updates since we only have id and opening_stock
+          // upsert would fail if row doesn't exist (requires shop_id, product_id, entry_date)
+          const updatePromises = toUpdate.map(item => 
+            supabase
+              .from('daily_stock_entries')
+              .update({ opening_stock: item.opening_stock })
+              .eq('id', item.id)
+          );
+          
+          const results = await Promise.all(updatePromises);
+          const errors = results.filter(r => r.error != null);
+          if (errors.length > 0) {
+            console.error('Update errors:', errors);
+            throw errors[0].error;
+          }
         }
         
         if (toInsert.length > 0) {
