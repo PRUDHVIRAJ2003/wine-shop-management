@@ -495,7 +495,11 @@ export default function StaffEntryPage() {
         })
       );
 
-      setStockEntries(newEntries.filter(Boolean) as any);
+      const validEntries = newEntries.filter(Boolean);
+      if (validEntries.length < prods.length) {
+        console.warn(`[loadStockEntries] ${prods.length - validEntries.length} product(s) failed to create entries`);
+      }
+      setStockEntries(validEntries as any);
     }
   };
 

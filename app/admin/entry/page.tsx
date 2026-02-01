@@ -855,12 +855,14 @@ export default function AdminEntryPage() {
         .eq('id', cashEntry.id);
 
       // Update local state instead of reloading - prevents race conditions
-      setCashEntry(prev => ({
-        ...prev,
-        is_locked: true,
-        is_approved: true,
-        approved_at: new Date().toISOString(),
-      }));
+      if (cashEntry) {
+        setCashEntry(prev => ({
+          ...(prev || {}),
+          is_locked: true,
+          is_approved: true,
+          approved_at: new Date().toISOString(),
+        }));
+      }
 
       alert(
         '✅ Success!\n\n' +
