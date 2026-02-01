@@ -854,7 +854,16 @@ export default function AdminEntryPage() {
         })
         .eq('id', cashEntry.id);
 
-      loadData();
+      // Update local state instead of reloading - prevents race conditions
+      if (cashEntry) {
+        setCashEntry(prev => ({
+          ...(prev || {}),
+          is_locked: true,
+          is_approved: true,
+          approved_at: new Date().toISOString(),
+        }));
+      }
+
       alert(
         '✅ Success!\n\n' +
         '• Data saved\n' +

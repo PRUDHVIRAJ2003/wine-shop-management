@@ -437,6 +437,12 @@ export default function StaffEntryPage() {
     if (existingEntries && existingEntries.length > 0) {
       setStockEntries(existingEntries as any);
     } else {
+      // Validate again before inserting - prevent race conditions
+      if (!shopId || prods.length === 0) {
+        console.warn('[loadStockEntries] Skipping insert - shopId or prods invalid');
+        return;
+      }
+      
       // Create new entries for today with yesterday's closing stock as opening
       const yesterday = getYesterdayDate(new Date(selectedDate));
       
@@ -450,37 +456,50 @@ export default function StaffEntryPage() {
 
       const newEntries = await Promise.all(
         prods.map(async (product) => {
-          const opening_stock = yesterdayMap.get(product.id) || 0;
-          
-          const { data: newEntry } = await supabase
-            .from('daily_stock_entries')
-            .insert({
-              shop_id: shopId,
-              product_id: product.id,
-              entry_date: selectedDate,
-              opening_stock,
-              purchases: 0,
-              transfer: 0,
-              closing_stock: opening_stock,
-              sold_qty: 0,
-              sale_value: 0,
-              closing_stock_value: opening_stock * product.mrp,
-            })
-            .select(`
-              *,
-              product:products(
+          try {
+            const opening_stock = yesterdayMap.get(product.id) || 0;
+            
+            const { data: newEntry, error } = await supabase
+              .from('daily_stock_entries')
+              .insert({
+                shop_id: shopId,
+                product_id: product.id,
+                entry_date: selectedDate,
+                opening_stock,
+                purchases: 0,
+                transfer: 0,
+                closing_stock: opening_stock,
+                sold_qty: 0,
+                sale_value: 0,
+                closing_stock_value: opening_stock * product.mrp,
+              })
+              .select(`
                 *,
-                product_type:product_types(*),
-                product_size:product_sizes(*)
-              )
-            `)
-            .single();
+                product:products(
+                  *,
+                  product_type:product_types(*),
+                  product_size:product_sizes(*)
+                )
+              `)
+              .single();
 
-          return newEntry;
+            if (error) {
+              console.error('[loadStockEntries] Insert error:', error);
+              return null;
+            }
+            return newEntry;
+          } catch (err) {
+            console.error('[loadStockEntries] Unexpected error:', err);
+            return null;
+          }
         })
       );
 
-      setStockEntries(newEntries.filter(Boolean) as any);
+      const validEntries = newEntries.filter(Boolean);
+      if (validEntries.length < prods.length) {
+        console.warn(`[loadStockEntries] ${prods.length - validEntries.length} product(s) failed to create entries`);
+      }
+      setStockEntries(validEntries as any);
     }
   };
 
@@ -509,6 +528,12 @@ export default function StaffEntryPage() {
         setExtraTransactions(extraTrans);
       }
     } else {
+      // Validate again before inserting - prevent race conditions
+      if (!shopId) {
+        console.warn('[loadCashEntry] Skipping insert - shopId invalid');
+        return;
+      }
+      
       // Get yesterday's counter closing
       const yesterday = getYesterdayDate(new Date(selectedDate));
       const { data: yesterdayCash } = await supabase
@@ -520,19 +545,28 @@ export default function StaffEntryPage() {
 
       const counter_opening = yesterdayCash?.counter_closing || 0;
       
-      // Create new cash entry
-      const { data: newCash } = await supabase
-        .from('daily_cash_entries')
-        .insert({
-          shop_id: shopId,
-          entry_date: selectedDate,
-          counter_opening,
-        })
-        .select()
-        .single();
+      try {
+        // Create new cash entry
+        const { data: newCash, error } = await supabase
+          .from('daily_cash_entries')
+          .insert({
+            shop_id: shopId,
+            entry_date: selectedDate,
+            counter_opening,
+          })
+          .select()
+          .single();
 
-      if (newCash) {
-        setCashEntry(newCash);
+        if (error) {
+          console.error('[loadCashEntry] Insert error:', error);
+          return;
+        }
+
+        if (newCash) {
+          setCashEntry(newCash);
+        }
+      } catch (err) {
+        console.error('[loadCashEntry] Unexpected error:', err);
       }
     }
   };
