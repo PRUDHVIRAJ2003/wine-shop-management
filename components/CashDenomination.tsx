@@ -12,6 +12,7 @@ interface CashDenominationProps {
     denom_20: number;
     denom_10: number;
     coins: number;
+    digital_payments?: number;
   };
   onUpdate: (field: string, value: number) => void;
   isLocked: boolean;
@@ -26,6 +27,7 @@ export default function CashDenomination({ denominations, onUpdate, isLocked }: 
     { label: '₹20', field: 'denom_20', value: 20 },
     { label: '₹10', field: 'denom_10', value: 10 },
     { label: 'Coins', field: 'coins', value: 1, isAmount: true },
+    { label: 'PhonePe/GPay/Paytm/Other Digital', field: 'digital_payments', value: 1, isAmount: true },
   ];
 
   const totalCash = denoms.reduce((sum, d) => {
@@ -40,8 +42,8 @@ export default function CashDenomination({ denominations, onUpdate, isLocked }: 
       <h3 className="text-lg font-semibold text-primary mb-4">Cash Denomination</h3>
       <div className="grid grid-cols-3 gap-4 mb-4">
         {denoms.map((denom) => (
-          <div key={denom.field} className="flex items-center space-x-2">
-            <Label className="w-16 text-right">{denom.label}</Label>
+          <div key={denom.field} className={`flex items-center space-x-2 ${denom.field === 'digital_payments' ? 'col-span-3' : ''}`}>
+            <Label className={`${denom.field === 'digital_payments' ? 'w-auto' : 'w-16'} text-right`}>{denom.label}</Label>
             {!denom.isAmount && <span className="text-gray-500">×</span>}
             {denom.isAmount && <span className="text-gray-500 invisible">×</span>}
             <Input
@@ -61,7 +63,7 @@ export default function CashDenomination({ denominations, onUpdate, isLocked }: 
       </div>
       <div className="border-t pt-4">
         <div className="flex justify-between items-center text-lg font-bold">
-          <span className="text-primary">Total Cash:</span>
+          <span className="text-primary">Total Cash (including Digital Payments):</span>
           <span className="text-secondary">₹{totalCash.toFixed(2)}</span>
         </div>
       </div>

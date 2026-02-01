@@ -85,7 +85,8 @@ export default function StaffEntryPage() {
     return creditEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
   }, [creditEntries]);
 
-  const totalCash = useMemo(() => {
+  // Physical cash from denominations (NOT including digital payments)
+  const physicalCash = useMemo(() => {
     return (
       (cashEntry.denom_500 || 0) * 500 +
       (cashEntry.denom_200 || 0) * 200 +
@@ -98,6 +99,17 @@ export default function StaffEntryPage() {
   }, [cashEntry.denom_500, cashEntry.denom_200, cashEntry.denom_100, cashEntry.denom_50, 
       cashEntry.denom_20, cashEntry.denom_10, cashEntry.coins]);
 
+  // Digital payments from CashDenomination component
+  const digitalPayments = useMemo(() => {
+    return (cashEntry.phonepe_paytm || 0);
+  }, [cashEntry.phonepe_paytm]);
+
+  // Total cash includes both physical cash and digital payments
+  const totalCash = useMemo(() => {
+    return physicalCash + digitalPayments;
+  }, [physicalCash, digitalPayments]);
+
+  // Keep totalUpiBank for backward compatibility (now includes phonepe_paytm and bank_transfer)
   const totalUpiBank = useMemo(() => {
     return (cashEntry.phonepe_paytm || 0) + (cashEntry.bank_transfer || 0);
   }, [cashEntry.phonepe_paytm, cashEntry.bank_transfer]);
@@ -110,13 +122,27 @@ export default function StaffEntryPage() {
     return stockEntries.reduce((sum, e) => sum + (e.sold_qty || 0), 0);
   }, [stockEntries]);
 
+  // New business logic: Total Amount calculation
+  const totalAmount = useMemo(() => {
+    return (cashEntry.counter_opening || 0) + totalSaleValue + totalExtraIncome;
+  }, [cashEntry.counter_opening, totalSaleValue, totalExtraIncome]);
+
+  // New business logic: Counter Closing (cash remaining at counter)
   const counterClosing = useMemo(() => {
-    return totalCash + totalUpiBank;
-  }, [totalCash, totalUpiBank]);
+    return totalAmount - digitalPayments - (cashEntry.cash_to_house || 0) - totalExpenses;
+  }, [totalAmount, digitalPayments, cashEntry.cash_to_house, totalExpenses]);
+
+  // New business logic: Cash Shortage/Excess
+  // Compare expected counter_closing with actual cash + credit sales
+  const actualCashAtCounter = physicalCash;
+  const cashDifference = useMemo(() => {
+    return (totalCredit + actualCashAtCounter) - counterClosing;
+  }, [totalCredit, actualCashAtCounter, counterClosing]);
 
   const cashShortage = useMemo(() => {
-    return totalSaleValue - totalCash;
-  }, [totalSaleValue, totalCash]);
+    // Negative difference means shortage
+    return cashDifference < 0 ? Math.abs(cashDifference) : 0;
+  }, [cashDifference]);
 
   // Update cashEntry when computed values change
   useEffect(() => {
@@ -948,24 +974,6 @@ export default function StaffEntryPage() {
               />
             </div>
 
-            <Button 
-              variant="secondary" 
-              onClick={async () => {
-                if (user?.shop_id && selectedDate) {
-                  const success = await carryForwardFromPreviousDay(user.shop_id, selectedDate);
-                  if (success) {
-                    alert('✅ Stock and Counter Opening carried forward from previous day!');
-                    await loadData();
-                  } else {
-                    alert('ℹ️ No previous day data found or already carried forward.');
-                  }
-                }
-              }}
-              className="whitespace-nowrap"
-            >
-              🔄 Carry Forward
-            </Button>
-
             <Input
               type="text"
               placeholder="Filter by brand..."
@@ -1036,41 +1044,6 @@ export default function StaffEntryPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Digital Payments</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <label className="text-sm font-medium text-gray-700">PhonePe/Paytm/UPI</label>
-                <Input
-                  type="number"
-                  value={cashEntry.phonepe_paytm === 0 ? '' : cashEntry.phonepe_paytm}
-                  placeholder="0"
-                  onChange={(e) => updateCashDenomination('phonepe_paytm', parseFloat(e.target.value) || 0)}
-                  disabled={cashEntry.is_locked}
-                  step="0.01"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Bank Transfer</label>
-                <Input
-                  type="number"
-                  value={cashEntry.bank_transfer === 0 ? '' : cashEntry.bank_transfer}
-                  placeholder="0"
-                  onChange={(e) => updateCashDenomination('bank_transfer', parseFloat(e.target.value) || 0)}
-                  disabled={cashEntry.is_locked}
-                  step="0.01"
-                />
-              </div>
-              <div className="pt-2 border-t">
-                <div className="flex justify-between text-lg font-bold">
-                  <span>Total UPI/Bank:</span>
-                  <span className="text-secondary">{formatCurrency(totalUpiBank)}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Bank Deposit / Cash to Counter */}
@@ -1122,6 +1095,7 @@ export default function StaffEntryPage() {
             denom_20: cashEntry.denom_20 || 0,
             denom_10: cashEntry.denom_10 || 0,
             coins: cashEntry.coins || 0,
+            digital_payments: cashEntry.phonepe_paytm || 0,
           }}
           onUpdate={updateCashDenomination}
           isLocked={cashEntry.is_locked || false}
@@ -1234,38 +1208,38 @@ export default function StaffEntryPage() {
         <h3 className="text-xl font-bold text-[#722F37] mb-4">Today Trend</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className={`border-2 ${
-            cashShortage === 0 
+            cashDifference === 0 
               ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-300' 
-              : cashShortage < 0 
+              : cashDifference > 0 
                 ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-300' 
                 : 'bg-gradient-to-br from-red-50 to-red-100 border-red-300'
           }`}>
             <CardHeader>
               <CardTitle className={
-                cashShortage === 0 
+                cashDifference === 0 
                   ? 'text-green-700' 
-                  : cashShortage < 0 
+                  : cashDifference > 0 
                     ? 'text-green-700' 
                     : 'text-red-700'
-              }>Cash Shortage</CardTitle>
+              }>Cash Status</CardTitle>
             </CardHeader>
             <CardContent>
               <div className={`text-3xl font-bold ${
-                cashShortage === 0 
+                cashDifference === 0 
                   ? 'text-green-600' 
-                  : cashShortage < 0 
+                  : cashDifference > 0 
                     ? 'text-green-600' 
                     : 'text-red-600'
               }`}>
-                {cashShortage === 0 
-                  ? 'NO CASH SHORTAGE' 
-                  : cashShortage < 0 
-                    ? `EXCESS CASH = ${formatCurrency(Math.abs(cashShortage))}` 
-                    : `CASH SHORTAGE = ${formatCurrency(cashShortage)}`
+                {cashDifference === 0 
+                  ? 'NO EXCESS/SHORTAGE' 
+                  : cashDifference > 0 
+                    ? `EXCESS CASH = ${formatCurrency(cashDifference)}` 
+                    : `CASH SHORTAGE = ${formatCurrency(Math.abs(cashDifference))}`
                 }
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                Total Sale Value ({formatCurrency(totalSaleValue)}) - Total Cash ({formatCurrency(totalCash)})
+                (Credit {formatCurrency(totalCredit)} + Physical Cash {formatCurrency(physicalCash)}) - Expected Counter Closing ({formatCurrency(counterClosing)})
               </p>
             </CardContent>
           </Card>
