@@ -666,6 +666,12 @@ export default function AdminEntryPage() {
       // ============================================
       // ACTION 2: Carry forward to NEXT day
       // ============================================
+      
+      // Guard clause: Ensure shop is selected before proceeding
+      if (!selectedShop) {
+        throw new Error('Shop selection is required to carry forward stock entries');
+      }
+      
       const currentDate = new Date(selectedDate);
       const nextDate = new Date(currentDate);
       nextDate.setDate(nextDate.getDate() + 1);
@@ -1332,16 +1338,14 @@ export default function AdminEntryPage() {
             <FileDown size={20} className="mr-2" />
             Generate PDF
           </Button>
-          {/* Show Approve & Lock when:
-              - Entry is not locked, OR
-              - Entry is locked but not yet approved (pending approval from staff) */}
-          {(!cashEntry.is_locked || (cashEntry.is_locked && !cashEntry.is_approved)) && (
+          {/* Show Approve & Lock when NOT approved yet */}
+          {(!cashEntry.is_locked || !cashEntry.is_approved) && (
             <Button onClick={handleApproveAndLock} size="lg">
               <Lock size={20} className="mr-2" />
               Approve & Lock
             </Button>
           )}
-          {/* Show Unlock only when entry is both locked AND approved */}
+          {/* Show Unlock ONLY when both locked AND approved */}
           {cashEntry.is_locked && cashEntry.is_approved && (
             <Button variant="destructive" onClick={handleUnlock} size="lg">
               <Unlock size={20} className="mr-2" />

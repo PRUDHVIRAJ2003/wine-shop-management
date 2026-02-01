@@ -12,7 +12,7 @@ interface CashDenominationProps {
     denom_20: number;
     denom_10: number;
     coins: number;
-    digital_payments?: number;
+    digital_payments?: number; // Maps to phonepe_paytm in database
   };
   onUpdate: (field: string, value: number) => void;
   isLocked: boolean;
