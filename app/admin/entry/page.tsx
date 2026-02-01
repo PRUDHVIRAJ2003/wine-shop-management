@@ -784,7 +784,7 @@ export default function AdminEntryPage() {
           );
           
           const results = await Promise.all(updatePromises);
-          const errors = results.filter(r => r.error);
+          const errors = results.filter(r => r.error != null);
           if (errors.length > 0) {
             console.error('Update errors:', errors);
             throw errors[0].error;
