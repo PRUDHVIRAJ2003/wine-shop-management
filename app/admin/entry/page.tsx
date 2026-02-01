@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { User, Shop, DailyStockEntry, DailyCashEntry, Product, ExtraTransaction, CreditEntry } from '@/types';
@@ -163,12 +163,21 @@ export default function AdminEntryPage() {
     checkAuth();
   }, []);
 
+  // Initial load when user first becomes available
   useEffect(() => {
     if (user && selectedShop && selectedDate) {
       setDataLoading(true);
       initializeData().finally(() => setDataLoading(false));
     }
-  }, [selectedShop, selectedDate]); // Removed user dependency to avoid re-fetching
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  
+  // Re-fetch when shop or date changes (after user is loaded)
+  useEffect(() => {
+    if (user && selectedShop && selectedDate) {
+      setDataLoading(true);
+      initializeData().finally(() => setDataLoading(false));
+    }
+  }, [selectedShop, selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initializeData = async () => {
     if (!selectedShop) return;

@@ -91,7 +91,7 @@ export default function ExtraTransactions({
                   <td className="px-4 py-2">
                     <input
                       type="number"
-                      value={transaction.amount || ''}
+                      value={transaction.amount === 0 ? '' : transaction.amount}
                       onChange={(e) => onUpdate(index, 'amount', parseFloat(e.target.value) || 0)}
                       placeholder="0"
                       disabled={isLocked}
