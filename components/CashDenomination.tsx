@@ -35,7 +35,7 @@ export default function CashDenomination({ denominations, onUpdate, isLocked }: 
     if (d.isAmount) {
       return sum + (denominations[d.field] || 0);
     }
-    return sum + (denominations[d.field] * d.value);
+    return sum + ((denominations[d.field] || 0) * d.value);
   }, 0);
 
   return (
@@ -57,7 +57,7 @@ export default function CashDenomination({ denominations, onUpdate, isLocked }: 
               min="0"
             />
             <span className="text-sm text-gray-600 w-24 text-right">
-              {denom.isAmount ? '' : `= ₹${(denominations[denom.field] * denom.value).toFixed(2)}`}
+              {denom.isAmount ? '' : `= ₹${((denominations[denom.field] || 0) * denom.value).toFixed(2)}`}
             </span>
           </div>
         ))}
