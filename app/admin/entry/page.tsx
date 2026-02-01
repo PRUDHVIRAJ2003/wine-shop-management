@@ -490,46 +490,64 @@ export default function AdminEntryPage() {
     if (!selectedShop) return;
     
     try {
-      for (const entry of creditEntries) {
-        if (entry.person_name && entry.amount > 0) {
-          if (entry.id) {
-            // Update existing
-            const { error } = await supabase
-              .from('daily_credit_entries')
-              .update({
-                person_name: entry.person_name,
-                amount: entry.amount,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', entry.id);
-            
-            if (error) throw error;
-          } else {
-            // Insert new
-            const { error } = await supabase
-              .from('daily_credit_entries')
-              .insert({
-                shop_id: selectedShop,
-                entry_date: selectedDate,
-                person_name: entry.person_name,
-                amount: entry.amount
-              });
-            
-            if (error) throw error;
-          }
-          
-          // Add to debtors table for auto-suggest (upsert)
-          const { error: debtorError } = await supabase
-            .from('debtors')
-            .upsert({
-              shop_id: selectedShop,
-              person_name: entry.person_name
-            }, {
-              onConflict: 'shop_id,person_name'
-            });
-          
-          if (debtorError) throw debtorError;
-        }
+      const validEntries = creditEntries.filter(entry => entry.person_name && entry.amount > 0);
+      
+      if (validEntries.length === 0) {
+        await loadPreviousDebtors();
+        return;
+      }
+
+      // Separate entries into updates and inserts
+      const updates = validEntries
+        .filter(entry => entry.id)
+        .map(entry => ({
+          id: entry.id,
+          person_name: entry.person_name,
+          amount: entry.amount,
+          updated_at: new Date().toISOString()
+        }));
+
+      const inserts = validEntries
+        .filter(entry => !entry.id)
+        .map(entry => ({
+          shop_id: selectedShop,
+          entry_date: selectedDate,
+          person_name: entry.person_name,
+          amount: entry.amount
+        }));
+
+      // Batch update existing entries
+      if (updates.length > 0) {
+        const { error } = await supabase
+          .from('daily_credit_entries')
+          .upsert(updates);
+        
+        if (error) throw error;
+      }
+
+      // Batch insert new entries
+      if (inserts.length > 0) {
+        const { error } = await supabase
+          .from('daily_credit_entries')
+          .insert(inserts);
+        
+        if (error) throw error;
+      }
+      
+      // Batch upsert all debtors
+      const debtors = validEntries.map(entry => ({
+        shop_id: selectedShop,
+        person_name: entry.person_name
+      }));
+
+      if (debtors.length > 0) {
+        const { error: debtorError } = await supabase
+          .from('debtors')
+          .upsert(debtors, {
+            onConflict: 'shop_id,person_name'
+          });
+        
+        if (debtorError) throw debtorError;
       }
       
       // Reload previous debtors to update the list
@@ -544,20 +562,29 @@ export default function AdminEntryPage() {
     if (!cashEntry.id) return;
 
     try {
-      // Save all stock entries
-      for (const entry of stockEntries) {
-        await supabase
+      // Batch save all stock entries using upsert for efficiency
+      const stockUpdates = stockEntries.map(entry => ({
+        id: entry.id,
+        shop_id: entry.shop_id,
+        product_id: entry.product_id,
+        entry_date: entry.entry_date,
+        opening_stock: entry.opening_stock,
+        purchases: entry.purchases,
+        transfer: entry.transfer,
+        closing_stock: entry.closing_stock,
+        sold_qty: entry.sold_qty,
+        sale_value: entry.sale_value,
+        closing_stock_value: entry.closing_stock_value,
+        updated_at: new Date().toISOString(),
+      }));
+
+      // Use upsert for batch operation - single database call
+      if (stockUpdates.length > 0) {
+        const { error: stockError } = await supabase
           .from('daily_stock_entries')
-          .update({
-            opening_stock: entry.opening_stock,
-            purchases: entry.purchases,
-            transfer: entry.transfer,
-            closing_stock: entry.closing_stock,
-            sold_qty: entry.sold_qty,
-            sale_value: entry.sale_value,
-            closing_stock_value: entry.closing_stock_value,
-          })
-          .eq('id', entry.id);
+          .upsert(stockUpdates);
+        
+        if (stockError) throw stockError;
       }
 
       await supabase
@@ -628,43 +655,63 @@ export default function AdminEntryPage() {
         .eq('entry_date', selectedDate);
       
       if (todayStockEntries && todayStockEntries.length > 0) {
-        // For each product, create/update tomorrow's entry with opening stock
+        // Fetch all existing tomorrow's entries in one query
+        const { data: existingEntries } = await supabase
+          .from('daily_stock_entries')
+          .select('id, product_id')
+          .eq('shop_id', selectedShop)
+          .eq('entry_date', nextDateStr);
+        
+        // Create a map of existing entries for quick lookup
+        const existingMap = new Map(
+          (existingEntries || []).map(e => [e.product_id, e.id])
+        );
+        
+        // Prepare batch operations
+        const toUpdate: any[] = [];
+        const toInsert: any[] = [];
+        
         for (const entry of todayStockEntries) {
-          // Check if tomorrow's entry exists
-          const { data: existingEntry } = await supabase
-            .from('daily_stock_entries')
-            .select('id')
-            .eq('shop_id', selectedShop)
-            .eq('product_id', entry.product_id)
-            .eq('entry_date', nextDateStr)
-            .single();
+          const existingId = existingMap.get(entry.product_id);
           
-          if (existingEntry) {
-            // Update existing entry's opening stock
-            await supabase
-              .from('daily_stock_entries')
-              .update({ 
-                opening_stock: entry.closing_stock 
-              })
-              .eq('id', existingEntry.id);
+          if (existingId) {
+            // Prepare update
+            toUpdate.push({
+              id: existingId,
+              opening_stock: entry.closing_stock
+            });
           } else {
-            // Insert new entry with opening stock from today's closing
-            await supabase
-              .from('daily_stock_entries')
-              .insert({
-                shop_id: selectedShop,
-                product_id: entry.product_id,
-                entry_date: nextDateStr,
-                opening_stock: entry.closing_stock,
-                purchases: 0,
-                transfer: 0,
-                closing_stock: entry.closing_stock,
-                sold_qty: 0,
-                sale_value: 0,
-                closing_stock_value: entry.closing_stock_value || 0
-              });
+            // Prepare insert
+            toInsert.push({
+              shop_id: selectedShop,
+              product_id: entry.product_id,
+              entry_date: nextDateStr,
+              opening_stock: entry.closing_stock,
+              purchases: 0,
+              transfer: 0,
+              closing_stock: entry.closing_stock,
+              sold_qty: 0,
+              sale_value: 0,
+              closing_stock_value: entry.closing_stock_value || 0
+            });
           }
         }
+        
+        // Execute batch operations
+        if (toUpdate.length > 0) {
+          const { error: updateError } = await supabase
+            .from('daily_stock_entries')
+            .upsert(toUpdate);
+          if (updateError) throw updateError;
+        }
+        
+        if (toInsert.length > 0) {
+          const { error: insertError } = await supabase
+            .from('daily_stock_entries')
+            .insert(toInsert);
+          if (insertError) throw insertError;
+        }
+        
         console.log('Stock entries carried forward successfully!');
       }
       
