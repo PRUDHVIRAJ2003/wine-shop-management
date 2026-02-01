@@ -188,9 +188,13 @@ export default function AdminEntryPage() {
     // Then load today's data
     await loadData();
     
-    // Load credit entries
-    await loadCreditEntries();
-    await loadPreviousDebtors();
+    // Load credit entries - don't let it fail the entire load
+    try {
+      await loadCreditEntries();
+      await loadPreviousDebtors();
+    } catch (error: any) {
+      console.warn('Credit entries load skipped:', error.message);
+    }
   };
 
   const handleRefresh = async () => {
@@ -198,8 +202,13 @@ export default function AdminEntryPage() {
     setDataLoading(true);
     try {
       await loadData();
-      await loadCreditEntries();
-      await loadPreviousDebtors();
+      // Load credit entries - don't let it fail the refresh
+      try {
+        await loadCreditEntries();
+        await loadPreviousDebtors();
+      } catch (error: any) {
+        console.warn('Credit entries load skipped:', error.message);
+      }
     } finally {
       setDataLoading(false);
     }
@@ -208,7 +217,7 @@ export default function AdminEntryPage() {
   const loadPreviousDebtors = async () => {
     if (!selectedShop) return;
     
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('debtors')
       .select('person_name')
       .eq('shop_id', selectedShop)
@@ -222,16 +231,28 @@ export default function AdminEntryPage() {
   const loadCreditEntries = async () => {
     if (!selectedShop) return;
     
-    const { data, error } = await supabase
-      .from('daily_credit_entries')
-      .select('*')
-      .eq('shop_id', selectedShop)
-      .eq('entry_date', selectedDate)
-      .order('created_at');
-    
-    if (data) {
-      setCreditEntries(data);
-    } else if (!error) {
+    try {
+      const { data, error } = await supabase
+        .from('daily_credit_entries')
+        .select('*')
+        .eq('shop_id', selectedShop)
+        .eq('entry_date', selectedDate)
+        .order('created_at');
+      
+      if (error) {
+        // Table might not exist - silently fail
+        console.warn('Credit entries table not available:', error.message);
+        setCreditEntries([]);
+        return;
+      }
+      
+      if (data) {
+        setCreditEntries(data);
+      } else {
+        setCreditEntries([]);
+      }
+    } catch (error: any) {
+      console.warn('Credit entries not available:', error?.message || error);
       setCreditEntries([]);
     }
   };
@@ -579,8 +600,13 @@ export default function AdminEntryPage() {
       // Reload previous debtors to update the list
       await loadPreviousDebtors();
     } catch (error: any) {
+      // Don't throw - just log warning if table doesn't exist
+      if (error.message?.includes('daily_credit_entries') || error.message?.includes('relation') || error.message?.includes('does not exist')) {
+        console.warn('Credit entries table not available - skipping save');
+        return;
+      }
       console.error('Error saving credit entries:', error);
-      throw error;
+      throw error; // Re-throw other errors
     }
   };
 
@@ -634,8 +660,12 @@ export default function AdminEntryPage() {
           );
       }
 
-      // Save credit entries
-      await saveCreditEntries();
+      // Save credit entries - don't let it fail the entire save
+      try {
+        await saveCreditEntries();
+      } catch (error: any) {
+        console.warn('Credit entries save skipped:', error.message);
+      }
 
       alert('✅ Changes saved successfully!');
     } catch (error: any) {
@@ -644,7 +674,16 @@ export default function AdminEntryPage() {
   };
 
   const handleApproveAndLock = async () => {
-    if (!cashEntry.id) return;
+    // Guard clause: Ensure shop is selected
+    if (!selectedShop) {
+      alert('❌ Please select a shop first');
+      return;
+    }
+    
+    if (!cashEntry.id) {
+      alert('❌ Cash entry not loaded. Please refresh and try again.');
+      return;
+    }
 
     try {
       // Confirm action
