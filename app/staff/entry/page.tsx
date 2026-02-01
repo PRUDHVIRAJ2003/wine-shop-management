@@ -744,6 +744,17 @@ export default function StaffEntryPage() {
   };
 
   const handleLockAndSend = async () => {
+    // Guard clauses at the VERY START
+    if (!user?.shop_id) {
+      alert('❌ Shop ID not found. Please log out and log in again.');
+      return;
+    }
+    
+    if (!cashEntry.id) {
+      alert('❌ Cash entry not loaded. Please refresh and try again.');
+      return;
+    }
+    
     try {
       // Confirm action
       const confirmed = confirm(
