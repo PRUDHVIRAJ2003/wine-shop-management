@@ -134,12 +134,21 @@ export default function AdminEntryPage() {
     return totalAmount - digitalPayments - (cashEntry.cash_to_house || 0) - totalExpenses;
   }, [totalAmount, digitalPayments, cashEntry.cash_to_house, totalExpenses]);
 
-  // New business logic: Cash Shortage/Excess
-  // Compare expected counter_closing with actual cash + credit sales
-  const actualCashAtCounter = physicalCash;
+  // New business logic: Cash Status Calculation
+  // Step 1: Physical cash after deductions (bank deposit and cash to owner)
+  const physicalCashAfterDeductions = useMemo(() => {
+    return physicalCash - (cashEntry.bank_deposit || 0) - (cashEntry.cash_to_house || 0);
+  }, [physicalCash, cashEntry.bank_deposit, cashEntry.cash_to_house]);
+
+  // Step 2: Cash status = physical cash after deductions + credit sales
+  const cashStatus = useMemo(() => {
+    return physicalCashAfterDeductions + totalCredit;
+  }, [physicalCashAfterDeductions, totalCredit]);
+
+  // Step 3: Determine if excess, shortage, or balanced
   const cashDifference = useMemo(() => {
-    return (totalCredit + actualCashAtCounter) - counterClosing;
-  }, [totalCredit, actualCashAtCounter, counterClosing]);
+    return cashStatus - counterClosing;
+  }, [cashStatus, counterClosing]);
 
   const cashShortage = useMemo(() => {
     // Negative difference means shortage
@@ -185,16 +194,16 @@ export default function AdminEntryPage() {
     // First, carry forward from previous day if needed
     await carryForwardFromPreviousDay(selectedShop, selectedDate);
     
-    // Then load today's data
-    await loadData();
-    
-    // Load credit entries - don't let it fail the entire load
-    try {
-      await loadCreditEntries();
-      await loadPreviousDebtors();
-    } catch (error: any) {
-      console.warn('Credit entries load skipped:', error.message);
-    }
+    // Run these in parallel for better performance
+    await Promise.all([
+      loadData(),
+      loadCreditEntries().catch(error => {
+        console.warn('Credit entries load skipped:', error.message);
+      }),
+      loadPreviousDebtors().catch(error => {
+        console.warn('Previous debtors load skipped:', error.message);
+      })
+    ]);
   };
 
   const handleRefresh = async () => {
@@ -1013,10 +1022,10 @@ export default function AdminEntryPage() {
       <main className="flex-1 p-8">
         {/* Top Bar */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
             <h1 className="text-3xl font-bold text-primary">Entry View/Edit</h1>
 
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full lg:w-auto">
               <div>
                 <Select
                   value={selectedShop}
@@ -1083,7 +1092,7 @@ export default function AdminEntryPage() {
         {/* Filter Section */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h3 className="text-lg font-semibold mb-3 text-primary">🔍 Filters</h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Brand Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
@@ -1338,7 +1347,7 @@ export default function AdminEntryPage() {
 
         {/* Summary Cards */}
         <h3 className="text-xl font-bold text-[#722F37] mb-4">Today Trend</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6">
           <Card className={`border-2 ${
             cashDifference === 0 
               ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-300' 
@@ -1364,10 +1373,10 @@ export default function AdminEntryPage() {
                     : 'text-red-600'
               }`}>
                 {cashDifference === 0 
-                  ? 'NO EXCESS/SHORTAGE' 
+                  ? 'COUNTER CLOSING BALANCED - NO SHORTAGE NOR EXCESS' 
                   : cashDifference > 0 
                     ? `EXCESS CASH = ${formatCurrency(cashDifference)}` 
-                    : `CASH SHORTAGE = ${formatCurrency(Math.abs(cashDifference))}`
+                    : `SHORTAGE OF CASH = ${formatCurrency(Math.abs(cashDifference))}`
                 }
               </div>
               <p className="text-xs text-gray-500 mt-2">
@@ -1403,24 +1412,24 @@ export default function AdminEntryPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-end space-x-4">
-          <Button onClick={saveCashEntry} size="lg">
+        <div className="flex flex-col sm:flex-row justify-end gap-3 sm:gap-4">
+          <Button onClick={saveCashEntry} size="lg" className="w-full sm:w-auto">
             Save Changes
           </Button>
-          <Button variant="secondary" onClick={handleGeneratePDF} size="lg">
+          <Button variant="secondary" onClick={handleGeneratePDF} size="lg" className="w-full sm:w-auto">
             <FileDown size={20} className="mr-2" />
             Generate PDF
           </Button>
           {/* Show Approve & Lock when NOT approved yet */}
           {(!cashEntry.is_locked || !cashEntry.is_approved) && (
-            <Button onClick={handleApproveAndLock} size="lg">
+            <Button onClick={handleApproveAndLock} size="lg" className="w-full sm:w-auto">
               <Lock size={20} className="mr-2" />
               Approve & Lock
             </Button>
           )}
           {/* Show Unlock ONLY when both locked AND approved */}
           {cashEntry.is_locked && cashEntry.is_approved && (
-            <Button variant="destructive" onClick={handleUnlock} size="lg">
+            <Button variant="destructive" onClick={handleUnlock} size="lg" className="w-full sm:w-auto">
               <Unlock size={20} className="mr-2" />
               Unlock
             </Button>
