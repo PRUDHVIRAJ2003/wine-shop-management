@@ -133,26 +133,10 @@ export default function StaffEntryPage() {
     return totalAmount - digitalPayments - (cashEntry.cash_to_house || 0) - totalExpenses;
   }, [totalAmount, digitalPayments, cashEntry.cash_to_house, totalExpenses]);
 
-  // New business logic: Cash Status Calculation
-  // Step 1: Physical cash after deductions (bank deposit and cash to owner)
-  const physicalCashAfterDeductions = useMemo(() => {
-    return physicalCash - (cashEntry.bank_deposit || 0) - (cashEntry.cash_to_house || 0);
-  }, [physicalCash, cashEntry.bank_deposit, cashEntry.cash_to_house]);
-
-  // Step 2: Cash status = physical cash after deductions + credit sales
-  const cashStatus = useMemo(() => {
-    return physicalCashAfterDeductions + totalCredit;
-  }, [physicalCashAfterDeductions, totalCredit]);
-
-  // Step 3: Determine if excess, shortage, or balanced
-  const cashDifference = useMemo(() => {
-    return cashStatus - counterClosing;
-  }, [cashStatus, counterClosing]);
-
-  const cashShortage = useMemo(() => {
-    // Negative difference means shortage
-    return cashDifference < 0 ? Math.abs(cashDifference) : 0;
-  }, [cashDifference]);
+  // NEW: Cash at Counter = Counter Closing - Credit Sales
+  const cashAtCounter = useMemo(() => {
+    return counterClosing - totalCredit;
+  }, [counterClosing, totalCredit]);
 
   // Update cashEntry when computed values change
   useEffect(() => {
@@ -161,11 +145,11 @@ export default function StaffEntryPage() {
       total_cash: totalCash,
       total_upi_bank: totalUpiBank,
       total_sale_value: totalSaleValue,
-      cash_shortage: cashShortage,
+      cash_shortage: 0, // No longer tracking shortage
       total_bottles_sold: totalBottlesSold,
       counter_closing: counterClosing,
     }));
-  }, [totalCash, totalUpiBank, totalSaleValue, cashShortage, totalBottlesSold, counterClosing]);
+  }, [totalCash, totalUpiBank, totalSaleValue, totalBottlesSold, counterClosing]);
 
   useEffect(() => {
     checkAuth();
@@ -418,11 +402,11 @@ export default function StaffEntryPage() {
       setProductSizes(sizes.sort((a, b) => a - b));
     }
 
-    // Load or create stock entries
-    await loadStockEntries(productsData || []);
-    
-    // Load cash entry
-    await loadCashEntry();
+    // Load stock entries, cash entry, credit entries in parallel
+    await Promise.all([
+      loadStockEntries(productsData || []),
+      loadCashEntry(),
+    ]);
   };
 
   const loadStockEntries = async (prods: Product[]) => {
@@ -1357,39 +1341,16 @@ export default function StaffEntryPage() {
         {/* Summary Cards */}
         <h3 className="text-xl font-bold text-[#722F37] mb-4">Today Trend</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          <Card className={`border-2 ${
-            cashDifference === 0 
-              ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-300' 
-              : cashDifference > 0 
-                ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-300' 
-                : 'bg-gradient-to-br from-red-50 to-red-100 border-red-300'
-          }`}>
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200">
             <CardHeader>
-              <CardTitle className={
-                cashDifference === 0 
-                  ? 'text-green-700' 
-                  : cashDifference > 0 
-                    ? 'text-green-700' 
-                    : 'text-red-700'
-              }>Cash Status</CardTitle>
+              <CardTitle className="text-blue-800">Cash at Counter</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className={`text-3xl font-bold ${
-                cashDifference === 0 
-                  ? 'text-green-600' 
-                  : cashDifference > 0 
-                    ? 'text-green-600' 
-                    : 'text-red-600'
-              }`}>
-                {cashDifference === 0 
-                  ? 'COUNTER CLOSING BALANCED - NO SHORTAGE NOR EXCESS' 
-                  : cashDifference > 0 
-                    ? `EXCESS CASH = ${formatCurrency(cashDifference)}` 
-                    : `SHORTAGE OF CASH = ${formatCurrency(Math.abs(cashDifference))}`
-                }
+              <div className="text-3xl font-bold text-blue-600">
+                {formatCurrency(cashAtCounter)}
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                (Credit {formatCurrency(totalCredit)} + Physical Cash {formatCurrency(physicalCash)}) - Expected Counter Closing ({formatCurrency(counterClosing)})
+                (Counter Closing {formatCurrency(counterClosing)} - Credit Sales {formatCurrency(totalCredit)})
               </p>
             </CardContent>
           </Card>
