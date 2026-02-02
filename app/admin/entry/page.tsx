@@ -304,25 +304,41 @@ export default function AdminEntryPage() {
       if (previousStockEntries && previousStockEntries.length > 0) {
         console.log(`[Carry Forward] Found ${previousStockEntries.length} entries from previous day`);
         
-        // Update today's entries with carried forward opening stock
-        for (const prevEntry of previousStockEntries) {
-          // Check if entry exists for this product today
-          const existingEntry = existingStockEntries?.find(
-            e => e.product_id === prevEntry.product_id
+        // Collect all updates to perform in parallel
+        const entriesToUpdate = previousStockEntries
+          .map(prevEntry => {
+            const existingEntry = existingStockEntries?.find(
+              e => e.product_id === prevEntry.product_id
+            );
+            if (existingEntry && existingEntry.opening_stock === 0) {
+              return {
+                id: existingEntry.id,
+                opening_stock: prevEntry.closing_stock,
+                closing_stock: prevEntry.closing_stock
+              };
+            }
+            return null;
+          })
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+        // Batch update using Promise.all for parallel execution
+        if (entriesToUpdate.length > 0) {
+          console.log(`[Carry Forward] Updating ${entriesToUpdate.length} entries in parallel...`);
+          
+          await Promise.all(
+            entriesToUpdate.map(entry =>
+              supabase
+                .from('daily_stock_entries')
+                .update({
+                  opening_stock: entry.opening_stock,
+                  closing_stock: entry.closing_stock
+                })
+                .eq('id', entry.id)
+            )
           );
           
-          if (existingEntry && existingEntry.opening_stock === 0) {
-            // Update existing entry with opening stock
-            await supabase
-              .from('daily_stock_entries')
-              .update({ 
-                opening_stock: prevEntry.closing_stock,
-                closing_stock: prevEntry.closing_stock // Initialize closing stock same as opening
-              })
-              .eq('id', existingEntry.id);
-          }
+          console.log('[Carry Forward] Stock entries carried forward successfully!');
         }
-        console.log('[Carry Forward] Stock entries carried forward successfully!');
       } else {
         console.log('[Carry Forward] No previous day stock entries found');
       }
