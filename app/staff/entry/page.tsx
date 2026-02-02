@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import StockEntryTable from '@/components/StockEntryTable';
 import CashDenomination from '@/components/CashDenomination';
 import ExtraTransactions from '@/components/ExtraTransactions';
-import { Wine, LogOut, Plus, Calendar } from 'lucide-react';
+import { Wine, LogOut, Plus, Calendar, RefreshCw } from 'lucide-react';
 import { formatCurrency, getTodayDate, getYesterdayDate } from '@/lib/utils';
 import ProductModal from '@/components/ProductModal';
 
@@ -24,6 +24,7 @@ export default function StaffEntryPage() {
   const [user, setUser] = useState<User | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [brandFilter, setBrandFilter] = useState('');
   const [sizeFilter, setSizeFilter] = useState('');
@@ -157,7 +158,8 @@ export default function StaffEntryPage() {
 
   useEffect(() => {
     if (user && shop) {
-      initializeData();
+      setDataLoading(true);
+      initializeData().finally(() => setDataLoading(false));
     }
   }, [user, shop, selectedDate]);
 
@@ -310,25 +312,41 @@ export default function StaffEntryPage() {
       if (previousStockEntries && previousStockEntries.length > 0) {
         console.log(`[Carry Forward] Found ${previousStockEntries.length} entries from previous day`);
         
-        // Update today's entries with carried forward opening stock
-        for (const prevEntry of previousStockEntries) {
-          // Check if entry exists for this product today
-          const existingEntry = existingStockEntries?.find(
-            e => e.product_id === prevEntry.product_id
+        // Collect all updates to perform in parallel
+        const entriesToUpdate = previousStockEntries
+          .map(prevEntry => {
+            const existingEntry = existingStockEntries?.find(
+              e => e.product_id === prevEntry.product_id
+            );
+            if (existingEntry && existingEntry.opening_stock === 0) {
+              return {
+                id: existingEntry.id,
+                opening_stock: prevEntry.closing_stock,
+                closing_stock: prevEntry.closing_stock
+              };
+            }
+            return null;
+          })
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+        // Batch update using Promise.all for parallel execution
+        if (entriesToUpdate.length > 0) {
+          console.log(`[Carry Forward] Updating ${entriesToUpdate.length} entries in parallel...`);
+          
+          await Promise.all(
+            entriesToUpdate.map(entry =>
+              supabase
+                .from('daily_stock_entries')
+                .update({
+                  opening_stock: entry.opening_stock,
+                  closing_stock: entry.closing_stock
+                })
+                .eq('id', entry.id)
+            )
           );
           
-          if (existingEntry && existingEntry.opening_stock === 0) {
-            // Update existing entry with opening stock
-            await supabase
-              .from('daily_stock_entries')
-              .update({ 
-                opening_stock: prevEntry.closing_stock,
-                closing_stock: prevEntry.closing_stock // Initialize closing stock same as opening
-              })
-              .eq('id', existingEntry.id);
-          }
+          console.log('[Carry Forward] Stock entries carried forward successfully!');
         }
-        console.log('[Carry Forward] Stock entries carried forward successfully!');
       } else {
         console.log('[Carry Forward] No previous day stock entries found');
       }
@@ -1137,6 +1155,14 @@ export default function StaffEntryPage() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8 space-y-6">
+        {/* Data Loading Indicator */}
+        {dataLoading && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 flex items-center">
+            <RefreshCw size={20} className="animate-spin text-blue-600 mr-3" />
+            <span className="text-blue-700 font-medium">Loading data...</span>
+          </div>
+        )}
+
         {/* Product Modal */}
         {user?.shop_id && (
           <ProductModal
