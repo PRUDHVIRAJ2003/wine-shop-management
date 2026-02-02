@@ -56,8 +56,10 @@ export default function StockEntryTable({
 
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden">
-      <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto -mx-4 sm:mx-0">
+        <div className="min-w-[800px] sm:min-w-0">
+          <div className="max-h-[500px] overflow-y-auto">
+            <table className="w-full text-sm">
           <thead className="bg-primary text-white sticky top-0 z-10">
             <tr>
               <th className="px-3 py-3 text-left">S.No</th>
@@ -147,6 +149,8 @@ export default function StockEntryTable({
           </tfoot>
         </table>
       </div>
+      </div>
+    </div>
     </div>
   );
 }

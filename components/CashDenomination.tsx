@@ -38,12 +38,31 @@ export default function CashDenomination({ denominations, onUpdate, isLocked }: 
     return sum + ((denominations[d.field] || 0) * d.value);
   }, 0);
 
+  // Calculate physical cash only (excluding digital payments)
+  const physicalCashOnly = (
+    (denominations.denom_500 || 0) * 500 +
+    (denominations.denom_200 || 0) * 200 +
+    (denominations.denom_100 || 0) * 100 +
+    (denominations.denom_50 || 0) * 50 +
+    (denominations.denom_20 || 0) * 20 +
+    (denominations.denom_10 || 0) * 10 +
+    (denominations.coins || 0)
+  );
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2,
+    }).format(amount);
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <h3 className="text-lg font-semibold text-primary mb-4">Cash Denomination</h3>
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
         {denoms.map((denom) => (
-          <div key={denom.field} className={`flex items-center space-x-2 ${denom.field === 'digital_payments' ? 'col-span-3' : ''}`}>
+          <div key={denom.field} className={`flex items-center space-x-2 ${denom.field === 'digital_payments' ? 'col-span-full' : ''}`}>
             <Label className={`${denom.field === 'digital_payments' ? 'w-auto' : 'w-16'} text-right`}>{denom.label}</Label>
             {!denom.isAmount && <span className="text-gray-500">×</span>}
             {denom.isAmount && <span className="text-gray-500 invisible">×</span>}
@@ -62,10 +81,27 @@ export default function CashDenomination({ denominations, onUpdate, isLocked }: 
           </div>
         ))}
       </div>
-      <div className="border-t pt-4">
-        <div className="flex justify-between items-center text-lg font-bold">
-          <span className="text-primary">Total Cash (including Digital Payments):</span>
-          <span className="text-secondary">₹{totalCash.toFixed(2)}</span>
+      
+      {/* Total Physical Cash Display (excluding digital payments) */}
+      <div className="col-span-full border-t pt-4 mt-4">
+        <div className="flex justify-between items-center bg-amber-50 p-4 rounded-lg">
+          <span className="font-semibold text-gray-700">Total Physical Cash (Denominations Only):</span>
+          <span className="text-2xl font-bold text-primary">
+            {formatCurrency(physicalCashOnly)}
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 mt-2 text-center">
+          (This is the physical cash count - does NOT include digital payments)
+        </p>
+      </div>
+
+      {/* Total Cash Including Digital Payments */}
+      <div className="border-t pt-4 mt-4">
+        <div className="flex justify-between items-center bg-green-50 p-4 rounded-lg">
+          <span className="font-semibold text-gray-700">Total Cash (Physical + Digital):</span>
+          <span className="text-2xl font-bold text-green-600">
+            {formatCurrency(totalCash)}
+          </span>
         </div>
       </div>
     </div>

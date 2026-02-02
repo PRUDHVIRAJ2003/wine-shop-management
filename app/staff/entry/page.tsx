@@ -133,12 +133,21 @@ export default function StaffEntryPage() {
     return totalAmount - digitalPayments - (cashEntry.cash_to_house || 0) - totalExpenses;
   }, [totalAmount, digitalPayments, cashEntry.cash_to_house, totalExpenses]);
 
-  // New business logic: Cash Shortage/Excess
-  // Compare expected counter_closing with actual cash + credit sales
-  const actualCashAtCounter = physicalCash;
+  // New business logic: Cash Status Calculation
+  // Step 1: Physical cash after deductions (bank deposit and cash to owner)
+  const physicalCashAfterDeductions = useMemo(() => {
+    return physicalCash - (cashEntry.bank_deposit || 0) - (cashEntry.cash_to_house || 0);
+  }, [physicalCash, cashEntry.bank_deposit, cashEntry.cash_to_house]);
+
+  // Step 2: Cash status = physical cash after deductions + credit sales
+  const cashStatus = useMemo(() => {
+    return physicalCashAfterDeductions + totalCredit;
+  }, [physicalCashAfterDeductions, totalCredit]);
+
+  // Step 3: Determine if excess, shortage, or balanced
   const cashDifference = useMemo(() => {
-    return (totalCredit + actualCashAtCounter) - counterClosing;
-  }, [totalCredit, actualCashAtCounter, counterClosing]);
+    return cashStatus - counterClosing;
+  }, [cashStatus, counterClosing]);
 
   const cashShortage = useMemo(() => {
     // Negative difference means shortage
@@ -165,7 +174,6 @@ export default function StaffEntryPage() {
   useEffect(() => {
     if (user && shop) {
       initializeData();
-      loadPreviousDebtors();
     }
   }, [user, shop, selectedDate]);
 
@@ -175,15 +183,16 @@ export default function StaffEntryPage() {
     // First, carry forward from previous day if needed
     await carryForwardFromPreviousDay(user.shop_id, selectedDate);
     
-    // Then load today's data
-    await loadData();
-    
-    // Load credit entries - don't let it fail the entire load
-    try {
-      await loadCreditEntries();
-    } catch (error: any) {
-      console.warn('Credit entries load skipped:', error.message);
-    }
+    // Run these in parallel for better performance
+    await Promise.all([
+      loadData(),
+      loadCreditEntries().catch(error => {
+        console.warn('Credit entries load skipped:', error.message);
+      }),
+      loadPreviousDebtors().catch(error => {
+        console.warn('Previous debtors load skipped:', error.message);
+      })
+    ]);
   };
 
   const loadPreviousDebtors = async () => {
@@ -454,60 +463,40 @@ export default function StaffEntryPage() {
 
       const yesterdayMap = new Map(yesterdayEntries?.map(e => [e.product_id, e.closing_stock]) || []);
 
-      const newEntries = await Promise.all(
-        prods.map(async (product) => {
-          try {
-            // Final validation before each insert - prevent race conditions
-            // Re-capture user?.shop_id to ensure we have the latest value
-            const currentShopId = user?.shop_id;
-            if (!currentShopId) {
-              console.warn('[loadStockEntries] shopId null at insert time, skipping');
-              return null;
-            }
-            
-            const opening_stock = yesterdayMap.get(product.id) || 0;
-            
-            const { data: newEntry, error } = await supabase
-              .from('daily_stock_entries')
-              .insert({
-                shop_id: currentShopId,
-                product_id: product.id,
-                entry_date: selectedDate,
-                opening_stock,
-                purchases: 0,
-                transfer: 0,
-                closing_stock: opening_stock,
-                sold_qty: 0,
-                sale_value: 0,
-                closing_stock_value: opening_stock * product.mrp,
-              })
-              .select(`
-                *,
-                product:products(
-                  *,
-                  product_type:product_types(*),
-                  product_size:product_sizes(*)
-                )
-              `)
-              .single();
+      // Batch insert all entries at once for better performance
+      const entriesToInsert = prods.map(product => ({
+        shop_id: shopId,
+        product_id: product.id,
+        entry_date: selectedDate,
+        opening_stock: yesterdayMap.get(product.id) || 0,
+        purchases: 0,
+        transfer: 0,
+        closing_stock: yesterdayMap.get(product.id) || 0,
+        sold_qty: 0,
+        sale_value: 0,
+        closing_stock_value: (yesterdayMap.get(product.id) || 0) * product.mrp,
+      }));
 
-            if (error) {
-              console.error('[loadStockEntries] Insert error:', error);
-              return null;
-            }
-            return newEntry;
-          } catch (err) {
-            console.error('[loadStockEntries] Unexpected error:', err);
-            return null;
-          }
-        })
-      );
+      const { data: newEntries, error } = await supabase
+        .from('daily_stock_entries')
+        .insert(entriesToInsert)
+        .select(`
+          *,
+          product:products(
+            *,
+            product_type:product_types(*),
+            product_size:product_sizes(*)
+          )
+        `);
 
-      const validEntries = newEntries.filter(Boolean);
-      if (validEntries.length < prods.length) {
-        console.warn(`[loadStockEntries] ${prods.length - validEntries.length} product(s) failed to create entries`);
+      if (error) {
+        console.error('[loadStockEntries] Batch insert error:', error);
+        return;
       }
-      setStockEntries(validEntries as any);
+
+      if (newEntries) {
+        setStockEntries(newEntries as any);
+      }
     }
   };
 
@@ -1100,7 +1089,7 @@ export default function StaffEntryPage() {
       {/* Header */}
       <header className="bg-primary text-white shadow-lg">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
             <div className="flex items-center space-x-4">
               <Wine size={32} />
               <div>
@@ -1109,7 +1098,7 @@ export default function StaffEntryPage() {
               </div>
             </div>
 
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full lg:w-auto">
               <div className="text-right">
                 <p className="text-sm text-primary-100">Logged in as</p>
                 <p className="font-medium">{user?.username}</p>
@@ -1121,7 +1110,7 @@ export default function StaffEntryPage() {
             </div>
           </div>
 
-          <div className="flex items-center space-x-4 mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
             <div className="flex items-center space-x-2">
               <Calendar size={20} />
               <Input
@@ -1131,7 +1120,7 @@ export default function StaffEntryPage() {
                   setSelectedDate(e.target.value);
                 }}
                 max={getTodayDate()}
-                className="bg-white text-gray-900"
+                className="bg-white text-gray-900 w-full"
               />
             </div>
 
@@ -1140,13 +1129,13 @@ export default function StaffEntryPage() {
               placeholder="Filter by brand..."
               value={brandFilter}
               onChange={(e) => setBrandFilter(e.target.value)}
-              className="bg-white text-gray-900 max-w-xs"
+              className="bg-white text-gray-900"
             />
 
             <Select
               value={sizeFilter}
               onChange={(e) => setSizeFilter(e.target.value)}
-              className="bg-white text-gray-900 max-w-xs"
+              className="bg-white text-gray-900"
             >
               <option value="">All Sizes</option>
               {productSizes.map(size => (
@@ -1154,7 +1143,7 @@ export default function StaffEntryPage() {
               ))}
             </Select>
 
-            <Button variant="secondary" onClick={() => setShowProductModal(true)}>
+            <Button variant="secondary" onClick={() => setShowProductModal(true)} className="w-full sm:w-auto">>
               <Plus size={20} className="mr-2" />
               Add/Alter Products
             </Button>
@@ -1367,7 +1356,7 @@ export default function StaffEntryPage() {
 
         {/* Summary Cards */}
         <h3 className="text-xl font-bold text-[#722F37] mb-4">Today Trend</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           <Card className={`border-2 ${
             cashDifference === 0 
               ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-300' 
@@ -1393,10 +1382,10 @@ export default function StaffEntryPage() {
                     : 'text-red-600'
               }`}>
                 {cashDifference === 0 
-                  ? 'NO EXCESS/SHORTAGE' 
+                  ? 'COUNTER CLOSING BALANCED - NO SHORTAGE NOR EXCESS' 
                   : cashDifference > 0 
                     ? `EXCESS CASH = ${formatCurrency(cashDifference)}` 
-                    : `CASH SHORTAGE = ${formatCurrency(Math.abs(cashDifference))}`
+                    : `SHORTAGE OF CASH = ${formatCurrency(Math.abs(cashDifference))}`
                 }
               </div>
               <p className="text-xs text-gray-500 mt-2">
@@ -1432,17 +1421,17 @@ export default function StaffEntryPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-end space-x-4">
-          <Button onClick={saveAllData} size="lg" disabled={cashEntry.is_locked || loading}>
+        <div className="flex flex-col sm:flex-row justify-end gap-3 sm:gap-4">
+          <Button onClick={saveAllData} size="lg" disabled={cashEntry.is_locked || loading} className="w-full sm:w-auto">
             Save Changes
           </Button>
           {!cashEntry.is_locked && (
-            <Button variant="secondary" size="lg" onClick={handleLockAndSend} disabled={loading}>
+            <Button variant="secondary" size="lg" onClick={handleLockAndSend} disabled={loading} className="w-full sm:w-auto">
               Lock & Send for Approval
             </Button>
           )}
           {cashEntry.is_locked && !cashEntry.unlock_requested && (
-            <Button variant="outline" size="lg" onClick={handleRequestUnlock} disabled={loading}>
+            <Button variant="outline" size="lg" onClick={handleRequestUnlock} disabled={loading} className="w-full sm:w-auto">
               Request Unlock
             </Button>
           )}
