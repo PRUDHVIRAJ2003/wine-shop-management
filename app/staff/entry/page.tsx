@@ -1143,7 +1143,7 @@ export default function StaffEntryPage() {
               ))}
             </Select>
 
-            <Button variant="secondary" onClick={() => setShowProductModal(true)} className="w-full sm:w-auto">>
+            <Button variant="secondary" onClick={() => setShowProductModal(true)} className="w-full sm:w-auto">
               <Plus size={20} className="mr-2" />
               Add/Alter Products
             </Button>
